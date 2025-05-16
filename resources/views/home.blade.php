@@ -13,11 +13,6 @@
             <div class="col-md-8 col-lg-6">
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <div class="d-flex mb-3">
-                            <button class="btn btn-sm btn-primary me-2 active">All</button>
-                            <button class="btn btn-sm btn-outline-secondary">Map</button>
-                        </div>
-
                         <div class="search-container position-relative">
                             <div class="input-group mb-3">
                                 <input type="text" id="search-input" class="form-control form-control-lg"
@@ -29,155 +24,101 @@
                             </div>
 
                             <div id="suggestions-container" class="list-group position-absolute w-100 d-none">
-                                <!-- Suggestions will appear here -->
+                                <!-- Loader shown while fetching -->
+                                <div id="suggestion-loader" class="list-group-item text-center text-muted d-none">
+                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                    Loading...
+                                </div>
                             </div>
-                        </div>
-
-                        <div class="d-flex flex-wrap gap-2 mt-3">
-                            <select class="form-select form-select-sm" style="width: auto;">
-                                <option selected>Filter by...</option>
-                                <option>Property Type</option>
-                                <option>Location</option>
-                                <option>Tax Status</option>
-                            </select>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
 @endsection
+
 @push('scripts')
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInput = document.getElementById('search-input');
-            const searchButton = document.getElementById('search-button');
-            const searchSpinner = document.getElementById('search-spinner');
-            const searchText = document.getElementById('search-text');
+        document.addEventListener('DOMContentLoaded', function () {
+            const input = document.getElementById('search-input');
             const suggestionsContainer = document.getElementById('suggestions-container');
-            let abortController = new AbortController();
+            const loader = document.getElementById('suggestion-loader');
 
-            // Debounce function
-            const debounce = (func, delay) => {
-                let timeoutId;
-                return (...args) => {
-                    clearTimeout(timeoutId);
-                    timeoutId = setTimeout(() => func.apply(this, args), delay);
-                };
-            };
+            let debounceTimeout;
 
-            const fetchSuggestions = async (query) => {
-                try {
-                    abortController.abort(); // Cancel previous request
-                    abortController = new AbortController();
+            input.addEventListener('input', function () {
+                clearTimeout(debounceTimeout);
+                const query = this.value.trim();
 
-                    const response = await fetch('/search/suggestions', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({ query }),
-                        signal: abortController.signal
-                    });
-
-                    if (!response.ok) throw new Error('Network response was not ok');
-
-                    const data = await response.json();
-                    displaySuggestions(data);
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error('Error fetching suggestions:', error);
-                        suggestionsContainer.classList.add('d-none');
-                    }
-                }
-            };
-
-            const displaySuggestions = (suggestions) => {
-                if (!suggestions || !Array.isArray(suggestions) || suggestions.length === 0) {
+                if (query.length < 2) {
+                    suggestionsContainer.innerHTML = '';
                     suggestionsContainer.classList.add('d-none');
                     return;
                 }
 
-                suggestionsContainer.innerHTML = '';
-
-                suggestions.forEach(suggestion => {
-                    const item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
-                    item.textContent = suggestion.text || suggestion.address || suggestion.value;
-
-                    item.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        searchInput.value = item.textContent;
-                        suggestionsContainer.classList.add('d-none');
-                        performSearch(); // Auto-search when suggestion is clicked
-                    });
-
-                    suggestionsContainer.appendChild(item);
-                });
-
-                suggestionsContainer.classList.remove('d-none');
-            };
-
-            const performSearch = () => {
-                const query = searchInput.value.trim();
-                if (!query) return;
-
-                // Show loading state
-                searchSpinner.classList.remove('d-none');
-                searchText.textContent = 'Searching...';
-                searchButton.disabled = true;
-
-                // Here you would implement your actual search functionality
-                console.log('Searching for:', query);
-
-                // In a real implementation, you would:
-                // 1. Make an API call to your search endpoint
-                // 2. Handle the response
-                // 3. Update the UI with results
-
-                // For now, we'll simulate a search
-                setTimeout(() => {
-                    searchSpinner.classList.add('d-none');
-                    searchText.textContent = 'Search';
-                    searchButton.disabled = false;
-
-                    // Hide suggestions after search
-                    suggestionsContainer.classList.add('d-none');
-
-                    // Show results (you would replace this with actual result display)
-                    alert(`Search functionality for "${query}" would display results here`);
-                }, 1000);
-            };
-
-            // Event listeners
-            searchInput.addEventListener('input', debounce(() => {
-                const query = searchInput.value.trim();
-                if (query.length >= 2) {
+                debounceTimeout = setTimeout(() => {
                     fetchSuggestions(query);
-                } else {
-                    suggestionsContainer.classList.add('d-none');
-                }
-            }, 300));
-
-            searchButton.addEventListener('click', performSearch);
-
-            searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    performSearch();
-                }
+                }, 300);
             });
+
+            function fetchSuggestions(query) {
+                // Show loader
+                suggestionsContainer.innerHTML = '';
+                loader.classList.remove('d-none');
+                suggestionsContainer.appendChild(loader);
+                suggestionsContainer.classList.remove('d-none');
+
+                fetch("{{ route('suggestions') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ query }),
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        loader.classList.add('d-none');
+
+                        if (data.success && data.suggestions && data.suggestions.length) {
+                            showSuggestions(data.suggestions);
+                        } else {
+                            suggestionsContainer.innerHTML = '';
+                            suggestionsContainer.classList.add('d-none');
+                        }
+                    })
+                    .catch(() => {
+                        loader.classList.add('d-none');
+                        suggestionsContainer.innerHTML = '';
+                        suggestionsContainer.classList.add('d-none');
+                    });
+            }
+
+            function showSuggestions(suggestions) {
+                suggestionsContainer.innerHTML = '';
+                suggestions.forEach(item => {
+                    const div = document.createElement('button');
+                    div.type = 'button';
+                    div.className = 'list-group-item list-group-item-action';
+                    div.textContent = item.suggest;
+                    div.addEventListener('click', () => {
+                        window.location.href = `/property-details/${item.id}`;
+                    });
+                    suggestionsContainer.appendChild(div);
+                });
+                suggestionsContainer.classList.remove('d-none');
+            }
+
 
             document.addEventListener('click', (e) => {
-                if (!searchInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+                if (!e.target.closest('.search-container')) {
+                    suggestionsContainer.innerHTML = '';
                     suggestionsContainer.classList.add('d-none');
                 }
             });
-
-            // Focus the search input on page load
-            searchInput.focus();
         });
     </script>
 @endpush

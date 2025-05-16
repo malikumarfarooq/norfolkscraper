@@ -13,38 +13,44 @@ class SearchController extends Controller
         return view('home');
     }
 
+    /**
+     * Handle autocomplete suggestions request
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function suggestions(Request $request)
     {
-        $request->validate([
-            'query' => 'required|string|min:2'
-        ]);
+        $term = $request->input('query');
 
-        $query = $request->input('query');
+        $payload = [
+            'filters' => [
+                'term' => $term,
+            ],
+            'debug' => [
+                'currentURL' => url('/'),
+                'previousURL' => '',
+            ],
+        ];
 
-        return Cache::remember("suggestions:{$query}", now()->addHours(6), function() use ($query) {
-            try {
-                $response = Http::withHeaders([
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
-                ])->post('https://air.norfolk.gov/api/v2/search/suggestions', [
-                    'query' => $query,
-                    'limit' => 10
-                ]);
+        $response = Http::withHeaders([
+            'Accept' => 'application/json, text/plain, */*',
+            'Content-Type' => 'application/json',
+            'Origin' => 'https://air.norfolk.gov',
+            'X-Requested-With' => 'XMLHttpRequest',
+            'X-CSRF-TOKEN' => csrf_token(),
+        ])->post('https://air.norfolk.gov/api/v2/search/suggestions', $payload);
 
-                if ($response->successful()) {
-                    return response()->json($response->json());
-                }
+        if ($response->successful()) {
+            return response()->json([
+                'success' => true,
+                'suggestions' => $response->json('suggestions', []),
+            ]);
+        }
 
-                return response()->json([
-                    'error' => 'API request failed',
-                    'status' => $response->status()
-                ], $response->status());
-
-            } catch (\Exception $e) {
-                return response()->json([
-                    'error' => $e->getMessage()
-                ], 500);
-            }
-        });
+        return response()->json([
+            'success' => false,
+            'suggestions' => [],
+        ], 500);
     }
 }
