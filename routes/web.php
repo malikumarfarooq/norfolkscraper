@@ -10,3 +10,6 @@ Route::post('/suggestions', [SearchController::class, 'suggestions'])->name('sug
 
 // Property-details page
 Route::get('/property-details/{id}', [PropertyDetailsController::class, 'show'])->name('property.details');
+
+Route::get('/property-details/{id}/export', [PropertyDetailsController::class, 'export'])
+    ->name('property.export');

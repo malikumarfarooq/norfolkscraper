@@ -1,3 +1,42 @@
+/* Enhanced dropdown styling */
+.dropdown-menu {
+    min-width: 8rem;
+}
+
+/* Better focus states for accessibility */
+#search-input:focus,
+#search-button:focus,
+#search-category-dropdown:focus {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .input-group > .form-control {
+        width: 60%;
+    }
+    .input-group > .search-bar-button-container {
+        width: 30%;
+    }
+    .input-group > #search-button {
+        width: 10%;
+        min-width: 80px;
+    }
+}
+
+/* Animation for smoother dropdown */
+.dropdown-menu {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Better suggestion item hover states */
+#suggestions-container .list-group-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(2px);
+    transition: all 0.2s ease;
+}
+
+
 /* Search container improvements */
 .search-container {
     position: relative;

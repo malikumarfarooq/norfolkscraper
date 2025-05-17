@@ -127,5 +127,31 @@
             </div>
         @endif
 
+        {{-- Add this at the bottom of your content section --}}
+        <div class="text-center mt-4">
+            <a href="{{ route('property.export', $property['id']) }}" class="btn btn-success">
+                <i class="fas fa-file-csv me-2"></i> Export to CSV
+            </a>
+        </div>
+
+
+        {{-- Add this at the bottom of your content section --}}
+        <div class="text-center mt-4">
+            <form action="{{ route('property.export', $property['id']) }}" method="GET" class="row g-3 justify-content-center">
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">Start Date</label>
+                    <input type="date" class="form-control" id="start_date" name="start_date">
+                </div>
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">End Date</label>
+                    <input type="date" class="form-control" id="end_date" name="end_date">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-file-csv me-2"></i> Export to CSV
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 @endsection

@@ -13,11 +13,37 @@
             <div class="col-md-8 col-lg-6">
                 <div class="card shadow-sm">
                     <div class="card-body">
+                        <label for="primary_search" style="margin-left: 0.25em;">Search</label>
                         <div class="search-container position-relative">
                             <div class="input-group mb-3">
                                 <input type="text" id="search-input" class="form-control form-control-lg"
                                        placeholder="Enter an address, tax account, GPIN" autocomplete="off">
-                                <button class="btn btn-primary" type="button" id="search-button">
+
+
+
+                                <!-- Category dropdown - Improved structure -->
+                                <div class="search-bar-button-container position-relative">
+                                    <div class="dropdown">
+                                        <!-- Dropdown toggle button -->
+                                        <button class="btn btn-outline-secondary dropdown-toggle" type="button"
+                                                id="search-category-dropdown" data-bs-toggle="dropdown"
+                                                style="    margin-left: 3px; height: 48px;width: 83px;"
+                                                aria-expanded="false">
+                                            <span id="selected-category">All</span>
+                                        </button>
+                                        <!-- Dropdown menu -->
+                                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="search-category-dropdown">
+                                            <li><a class="dropdown-item" href="#" data-value="All">All</a></li>
+                                            <li><a class="dropdown-item" href="#" data-value="GPIN">Account</a></li>
+                                            <li><a class="dropdown-item" href="#" data-value="GPIN">GPIN</a></li>
+                                            <li><a class="dropdown-item" href="#" data-value="Address">Address</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+
+
+                                <button class="btn btn-success" type="button" id="search-button" style="margin-left: 1px;">
                                     <span class="d-none spinner-border spinner-border-sm" id="search-spinner"></span>
                                     <span id="search-text">Search</span>
                                 </button>
@@ -119,6 +145,78 @@
                     suggestionsContainer.classList.add('d-none');
                 }
             });
+        });
+    </script>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize dropdown selection
+            const dropdownItems = document.querySelectorAll('.dropdown-item');
+            const selectedCategory = document.getElementById('selected-category');
+
+            // Set initial active item
+            let currentSelection = 'All';
+
+            // Handle dropdown item selection
+            dropdownItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+
+                    // Update the displayed selection
+                    currentSelection = this.getAttribute('data-value');
+                    selectedCategory.textContent = this.textContent;
+
+                    // Close the dropdown (Bootstrap 5)
+                    const dropdown = bootstrap.Dropdown.getInstance(document.getElementById('search-category-dropdown'));
+                    dropdown.hide();
+
+                    // Optional: Trigger search immediately when selection changes
+                    const searchInput = document.getElementById('search-input');
+                    if (searchInput.value.trim().length >= 2) {
+                        fetchSuggestions(searchInput.value.trim());
+                    }
+
+                    console.log('Selected category:', currentSelection); // For debugging
+                });
+            });
+
+            // Modified fetchSuggestions function to use the selected category
+            function fetchSuggestions(query) {
+                // Show loader
+                const suggestionsContainer = document.getElementById('suggestions-container');
+                const loader = document.getElementById('suggestion-loader');
+
+                suggestionsContainer.innerHTML = '';
+                loader.classList.remove('d-none');
+                suggestionsContainer.appendChild(loader);
+                suggestionsContainer.classList.remove('d-none');
+
+                fetch("{{ route('suggestions') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        category: currentSelection // Send the current selection to backend
+                    }),
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        loader.classList.add('d-none');
+                        if (data.success && data.suggestions?.length) {
+                            showSuggestions(data.suggestions);
+                        } else {
+                            showNoResults();
+                        }
+                    })
+                    .catch(showNoResults);
+            }
+
+            // Rest of your existing functions...
         });
     </script>
 @endpush
