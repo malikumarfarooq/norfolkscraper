@@ -5,7 +5,7 @@
 @section('content')
     <div class="container my-5">
         <div class="text-center mb-5">
-            <h1 class="display-4 fw-bold">Norfolk Scraper</h1>
+            <h1 class="display-4 fw-bold" style="color:dodgerblue">Norfolk Scraper</h1>
             <h2 class="h3 text-muted">Extract Property Information Resource</h2>
         </div>
 
@@ -14,6 +14,7 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <label for="primary_search" style="margin-left: 0.25em;">Search</label>
+                        <label for="primary_search" style="margin-left: 19.25em;">Filter</label>
                         <div class="search-container position-relative">
                             <div class="input-group mb-3">
                                 <input type="text" id="search-input" class="form-control form-control-lg"
