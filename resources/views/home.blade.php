@@ -18,7 +18,7 @@
                         <div class="search-container position-relative">
                             <div class="input-group mb-3">
                                 <input type="text" id="search-input" class="form-control form-control-lg"
-                                       placeholder="Enter an address, tax account, GPIN" autocomplete="off">
+                                       placeholder="Enter an address, tax account" autocomplete="off">
 
 
 
@@ -36,7 +36,7 @@
                                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="search-category-dropdown">
                                             <li><a class="dropdown-item" href="#" data-value="All">All</a></li>
                                             <li><a class="dropdown-item" href="#" data-value="GPIN">Account</a></li>
-                                            <li><a class="dropdown-item" href="#" data-value="GPIN">GPIN</a></li>
+{{--                                            <li><a class="dropdown-item" href="#" data-value="GPIN">GPIN</a></li>--}}
                                             <li><a class="dropdown-item" href="#" data-value="Address">Address</a></li>
                                         </ul>
                                     </div>
@@ -67,65 +67,121 @@
 @endsection
 
 @push('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const input = document.getElementById('search-input');
-            const suggestionsContainer = document.getElementById('suggestions-container');
-            const loader = document.getElementById('suggestion-loader');
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const input = document.getElementById('search-input');
+        const suggestionsContainer = document.getElementById('suggestions-container');
+        const loader = document.getElementById('suggestion-loader');
+        let currentSelection = 'All'; // Track the current category selection
 
-            let debounceTimeout;
+        // Initialize dropdown selection
+        const dropdownItems = document.querySelectorAll('.dropdown-item');
+        const selectedCategory = document.getElementById('selected-category');
 
-            input.addEventListener('input', function () {
-                clearTimeout(debounceTimeout);
-                const query = this.value.trim();
+        // Handle dropdown item selection
+        dropdownItems.forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                currentSelection = this.getAttribute('data-value');
+                selectedCategory.textContent = this.textContent;
 
-                if (query.length < 2) {
-                    suggestionsContainer.innerHTML = '';
-                    suggestionsContainer.classList.add('d-none');
-                    return;
+                // Close the dropdown
+                const dropdown = bootstrap.Dropdown.getInstance(document.getElementById('search-category-dropdown'));
+                dropdown.hide();
+
+                // If there's text in the input, refresh suggestions
+                if (input.value.trim().length >= 2) {
+                    fetchSuggestions(input.value.trim());
                 }
-
-                debounceTimeout = setTimeout(() => {
-                    fetchSuggestions(query);
-                }, 300);
             });
+        });
 
-            function fetchSuggestions(query) {
-                // Show loader
+        let debounceTimeout;
+
+        input.addEventListener('input', function() {
+            clearTimeout(debounceTimeout);
+            const query = this.value.trim();
+
+            if (query.length < 2) {
                 suggestionsContainer.innerHTML = '';
-                loader.classList.remove('d-none');
-                suggestionsContainer.appendChild(loader);
-                suggestionsContainer.classList.remove('d-none');
-
-                fetch("{{ route('suggestions') }}", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ query }),
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        loader.classList.add('d-none');
-
-                        if (data.success && data.suggestions && data.suggestions.length) {
-                            showSuggestions(data.suggestions);
-                        } else {
-                            suggestionsContainer.innerHTML = '';
-                            suggestionsContainer.classList.add('d-none');
-                        }
-                    })
-                    .catch(() => {
-                        loader.classList.add('d-none');
-                        suggestionsContainer.innerHTML = '';
-                        suggestionsContainer.classList.add('d-none');
-                    });
+                suggestionsContainer.classList.add('d-none');
+                return;
             }
 
-            function showSuggestions(suggestions) {
-                suggestionsContainer.innerHTML = '';
+            debounceTimeout = setTimeout(() => {
+                fetchSuggestions(query);
+            }, 300);
+        });
+
+        function fetchSuggestions(query) {
+            // Show loader
+            suggestionsContainer.innerHTML = '';
+            loader.classList.remove('d-none');
+            suggestionsContainer.appendChild(loader);
+            suggestionsContainer.classList.remove('d-none');
+
+            fetch("{{ route('suggestions') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    query: query,
+                    category: currentSelection
+                }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    loader.classList.add('d-none');
+
+                    if (data.success && data.suggestions && data.suggestions.length) {
+                        showSuggestions(data.suggestions);
+                    } else {
+                        showNoResults();
+                    }
+                })
+                .catch(() => {
+                    showNoResults();
+                });
+        }
+
+        function showSuggestions(suggestions) {
+            suggestionsContainer.innerHTML = '';
+
+            // Group suggestions by type if showing all
+            if (currentSelection === 'All') {
+                const grouped = {};
+
+                suggestions.forEach(item => {
+                    const type = item.type || 'Address'; // Default to Address if type not provided
+                    if (!grouped[type]) {
+                        grouped[type] = [];
+                    }
+                    grouped[type].push(item);
+                });
+
+                // Add section headers and items
+                Object.keys(grouped).forEach(type => {
+                    const header = document.createElement('div');
+                    header.className = 'list-group-item list-group-item-secondary small fw-bold';
+                    header.textContent = type === 'account' ? 'Account Numbers' : type.charAt(0).toUpperCase() + type.slice(1);
+                    suggestionsContainer.appendChild(header);
+
+                    grouped[type].forEach(item => {
+                        const div = document.createElement('button');
+                        div.type = 'button';
+                        div.className = 'list-group-item list-group-item-action';
+                        div.textContent = item.suggest;
+                        div.addEventListener('click', () => {
+                            window.location.href = `/property-details/${item.id}`;
+                        });
+                        suggestionsContainer.appendChild(div);
+                    });
+                });
+            } else {
+                // Just show all suggestions without grouping
                 suggestions.forEach(item => {
                     const div = document.createElement('button');
                     div.type = 'button';
@@ -136,88 +192,28 @@
                     });
                     suggestionsContainer.appendChild(div);
                 });
-                suggestionsContainer.classList.remove('d-none');
             }
 
+            suggestionsContainer.classList.remove('d-none');
+        }
 
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.search-container')) {
-                    suggestionsContainer.innerHTML = '';
-                    suggestionsContainer.classList.add('d-none');
-                }
-            });
-        });
-    </script>
+        function showNoResults() {
+            suggestionsContainer.innerHTML = '';
+            const noResults = document.createElement('div');
+            noResults.className = 'list-group-item text-muted';
+            noResults.textContent = 'No suggestions found';
+            suggestionsContainer.appendChild(noResults);
+            suggestionsContainer.classList.remove('d-none');
+        }
 
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize dropdown selection
-            const dropdownItems = document.querySelectorAll('.dropdown-item');
-            const selectedCategory = document.getElementById('selected-category');
-
-            // Set initial active item
-            let currentSelection = 'All';
-
-            // Handle dropdown item selection
-            dropdownItems.forEach(item => {
-                item.addEventListener('click', function(e) {
-                    e.preventDefault();
-
-                    // Update the displayed selection
-                    currentSelection = this.getAttribute('data-value');
-                    selectedCategory.textContent = this.textContent;
-
-                    // Close the dropdown (Bootstrap 5)
-                    const dropdown = bootstrap.Dropdown.getInstance(document.getElementById('search-category-dropdown'));
-                    dropdown.hide();
-
-                    // Optional: Trigger search immediately when selection changes
-                    const searchInput = document.getElementById('search-input');
-                    if (searchInput.value.trim().length >= 2) {
-                        fetchSuggestions(searchInput.value.trim());
-                    }
-
-                    console.log('Selected category:', currentSelection); // For debugging
-                });
-            });
-
-            // Modified fetchSuggestions function to use the selected category
-            function fetchSuggestions(query) {
-                // Show loader
-                const suggestionsContainer = document.getElementById('suggestions-container');
-                const loader = document.getElementById('suggestion-loader');
-
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
                 suggestionsContainer.innerHTML = '';
-                loader.classList.remove('d-none');
-                suggestionsContainer.appendChild(loader);
-                suggestionsContainer.classList.remove('d-none');
-
-                fetch("{{ route('suggestions') }}", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        query: query,
-                        category: currentSelection // Send the current selection to backend
-                    }),
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        loader.classList.add('d-none');
-                        if (data.success && data.suggestions?.length) {
-                            showSuggestions(data.suggestions);
-                        } else {
-                            showNoResults();
-                        }
-                    })
-                    .catch(showNoResults);
+                suggestionsContainer.classList.add('d-none');
             }
-
-            // Rest of your existing functions...
         });
-    </script>
+    });
+
+</script>
+
 @endpush

@@ -35,117 +35,211 @@ class PropertyDetailsController extends Controller
 
         if ($response->successful()) {
             $property = $response->json();
-
-            // Get date filters from request
-            $startDate = $request->input('start_date');
-            $endDate = $request->input('end_date');
-
-            // Prepare CSV data with date filtering
-            $csvData = $this->formatPropertyDataForCSV($property, $startDate, $endDate);
-
             $filename = "property-{$id}-" . date('Y-m-d') . ".csv";
 
-            return Response::make($csvData, 200, [
-                'Content-Type' => 'text/csv',
-                'Content-Disposition' => "attachment; filename={$filename}",
-            ]);
+            return Response::stream(
+                function () use ($property, $request) {
+                    $this->generateSingleRowCsv($property, $request);
+                },
+                200,
+                [
+                    'Content-Type' => 'text/csv',
+                    'Content-Disposition' => "attachment; filename={$filename}",
+                ]
+            );
         }
 
         abort(404, 'Record not found');
     }
 
     /**
-     * Format property data for CSV export with date filtering.
+     * Generate CSV with all data in single row
      */
-    private function formatPropertyDataForCSV(array $property, ?string $startDate = null, ?string $endDate = null): string
+    private function generateSingleRowCsv(array $property, Request $request)
     {
-        $output = fopen('php://temp', 'w');
+        $output = fopen('php://output', 'w');
 
-        // Basic Info (always included)
-        fputcsv($output, ['Category', 'Field', 'Value']);
-        fputcsv($output, ['Basic Information', 'Property ID', $property['id']]);
-        fputcsv($output, ['Basic Information', 'City Latitude', $property['cty']]);
-        fputcsv($output, ['Basic Information', 'City Longitude', $property['ctx']]);
-        fputcsv($output, ['Basic Information', 'Active', $property['active'] ? 'Yes' : 'No']);
+        // Prepare headers
+        $headers = [
+            // Basic Information
+            'Property ID', 'City Latitude', 'City Longitude', 'Active',
 
-        // Parcel Header (always included)
-        $header = $property['parcel']['header'];
-        fputcsv($output, ['Parcel Header', 'Street', $header['PropertyStreet']]);
-        fputcsv($output, ['Parcel Header', 'Total Value', $header['total_value']]);
-        fputcsv($output, ['Parcel Header', 'Mailing Address', $header['MailingAddress']]);
-        fputcsv($output, ['Parcel Header', 'GPIN', $header['GPIN']]);
+            // Parcel Header
+            'Street', 'Total Value', 'Mailing Address', 'GPIN',
 
-        // Filter sales history by date if dates provided
-        if ($sales = $property['parcel']['sections']['1'][0] ?? []) {
-            $filteredSales = $this->filterByDateRange($sales, $startDate, $endDate, 'saledate');
+            // Ownership
+            'Owner Name', 'Legal Description', 'Parcel Area (SF)', 'Parcel Area (Acres)', 'Neighborhood',
 
-            foreach ($filteredSales as $sale) {
-                fputcsv($output, ['Sales History', 'Owner', $sale['owners']]);
-                fputcsv($output, ['Sales History', 'Sale Date', $sale['saledate']]);
-                fputcsv($output, ['Sales History', 'Price', $sale['saleprice']]);
-                fputcsv($output, ['Sales History', 'Doc #', $sale['docnum']]);
-            }
+            // Building Details
+            'Building Type', 'Year Built', 'Stories', 'Bedrooms', 'Full Baths', 'Half Baths',
+            'Finished Living Area', 'Heating', 'Cooling',
+
+            // Sales History (latest)
+            'Latest Sale Owner', 'Latest Sale Date', 'Latest Sale Price', 'Latest Sale Doc #',
+
+            // Assessment (latest)
+            'Latest Assessment Year', 'Latest Land Value', 'Latest Improvement Value', 'Latest Total Value'
+        ];
+
+        // Get data sections
+        $header = $property['parcel']['header'] ?? [];
+        $ownership = $property['parcel']['sections']['0'][0][0] ?? [];
+        $building = $property['parcel']['sections']['0'][1][0] ?? [];
+
+        // Get latest sale
+        $sales = $this->filterSales($property['parcel']['sections']['1'][0] ?? [], $request);
+        $latestSale = $sales[0] ?? [];
+
+        // Get latest assessment
+        $assessments = $this->filterAssessments($property['parcel']['sections']['1'][1] ?? [], $request);
+        $latestAssessment = $assessments[0] ?? [];
+
+        // Prepare data row
+        $data = [
+            // Basic Information
+            $property['id'] ?? '',
+            $property['cty'] ?? '',
+            $property['ctx'] ?? '',
+            $property['active'] ? 'Yes' : 'No',
+
+            // Parcel Header
+            $header['PropertyStreet'] ?? '',
+            $header['total_value'] ?? '',
+            $header['MailingAddress'] ?? '',
+            $header['GPIN'] ?? '',
+
+            // Ownership
+            $ownership['OwnerName'] ?? '',
+            $ownership['LegalDescription'] ?? '',
+            $ownership['ParcelAreaSF'] ?? '',
+            $ownership['ParcelAcreage'] ?? '',
+            $ownership['Neighborhood'] ?? '',
+
+            // Building Details
+            $building['BuildingType'] ?? '',
+            $building['YearBuilt'] ?? '',
+            $building['NumberofStories'] ?? '',
+            $building['Bedrooms'] ?? '',
+            $building['FullBaths'] ?? '',
+            $building['HalfBaths'] ?? '',
+            $building['FinishedLivingArea'] ?? '',
+            $building['Heating'] ?? '',
+            $building['Cooling'] ?? '',
+
+            // Latest Sale
+            $latestSale['owners'] ?? '',
+            $latestSale['saledate'] ?? '',
+            $latestSale['saleprice'] ?? '',
+            $latestSale['docnum'] ?? '',
+
+            // Latest Assessment
+            $latestAssessment['eff_year'] ?? '',
+            $latestAssessment['land_market_value'] ?? '',
+            $latestAssessment['imp_val'] ?? '',
+            $latestAssessment['total_value'] ?? ''
+        ];
+
+        // Write to CSV
+        fputcsv($output, $headers);
+        fputcsv($output, $data);
+
+        // Add sales history as additional rows if needed
+        if ($request->input('full_history')) {
+            $this->appendSalesHistory($output, $sales);
+            $this->appendAssessments($output, $assessments);
         }
 
-        // Filter assessments by date if dates provided
-        if ($assessments = $property['parcel']['sections']['1'][1] ?? []) {
-            $filteredAssessments = $this->filterByDateRange($assessments, $startDate, $endDate, 'eff_year');
-
-            foreach ($filteredAssessments as $assess) {
-                fputcsv($output, ['Assessment', 'Effective Year', $assess['eff_year']]);
-                fputcsv($output, ['Assessment', 'Land Value', $assess['land_market_value']]);
-                fputcsv($output, ['Assessment', 'Improvement Value', $assess['imp_val']]);
-                fputcsv($output, ['Assessment', 'Total Value', $assess['total_value']]);
-            }
-        }
-
-        // Always include these sections (not date-based)
-        if ($section0 = $property['parcel']['sections']['0'][0][0] ?? null) {
-            fputcsv($output, ['Ownership', 'Owner Name', $section0['OwnerName']]);
-            fputcsv($output, ['Ownership', 'Legal Description', $section0['LegalDescription']]);
-            fputcsv($output, ['Ownership', 'Parcel Area (SF)', $section0['ParcelAreaSF']]);
-            fputcsv($output, ['Ownership', 'Parcel Area (Acres)', $section0['ParcelAcreage']]);
-            fputcsv($output, ['Ownership', 'Neighborhood', $section0['Neighborhood']]);
-        }
-
-        if ($building = $property['parcel']['sections']['0'][1][0] ?? null) {
-            fputcsv($output, ['Building', 'Type', $building['BuildingType']]);
-            fputcsv($output, ['Building', 'Year Built', $building['YearBuilt']]);
-            fputcsv($output, ['Building', 'Stories', $building['NumberofStories']]);
-            fputcsv($output, ['Building', 'Bedrooms', $building['Bedrooms']]);
-            fputcsv($output, ['Building', 'Full Baths', $building['FullBaths']]);
-            fputcsv($output, ['Building', 'Half Baths', $building['HalfBaths']]);
-            fputcsv($output, ['Building', 'Area', $building['FinishedLivingArea']]);
-            fputcsv($output, ['Building', 'Heating', $building['Heating']]);
-            fputcsv($output, ['Building', 'Cooling', $building['Cooling']]);
-        }
-
-        rewind($output);
-        $csv = stream_get_contents($output);
         fclose($output);
-
-        return $csv;
     }
 
     /**
-     * Filter array by date range.
+     * Filter sales by date range
      */
-    private function filterByDateRange(array $items, ?string $startDate, ?string $endDate, string $dateField): array
+    private function filterSales(array $sales, Request $request): array
     {
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+
         if (!$startDate && !$endDate) {
-            return $items;
+            return $sales;
         }
 
-        return array_filter($items, function ($item) use ($startDate, $endDate, $dateField) {
-            $itemDate = $item[$dateField] ?? null;
-            if (!$itemDate) return false;
+        return array_filter($sales, function ($sale) use ($startDate, $endDate) {
+            $saleDate = $sale['saledate'] ?? null;
+            if (!$saleDate) return false;
 
-            $itemDate = strtotime($itemDate);
-            $startValid = !$startDate || $itemDate >= strtotime($startDate);
-            $endValid = !$endDate || $itemDate <= strtotime($endDate . ' 23:59:59');
+            $saleDate = strtotime($saleDate);
+            $startValid = !$startDate || $saleDate >= strtotime($startDate);
+            $endValid = !$endDate || $saleDate <= strtotime($endDate . ' 23:59:59');
 
             return $startValid && $endValid;
         });
+    }
+
+    /**
+     * Filter assessments by date range
+     */
+    private function filterAssessments(array $assessments, Request $request): array
+    {
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+
+        if (!$startDate && !$endDate) {
+            return $assessments;
+        }
+
+        return array_filter($assessments, function ($assessment) use ($startDate, $endDate) {
+            $year = $assessment['eff_year'] ?? null;
+            if (!$year) return false;
+
+            $assessmentDate = strtotime("$year-07-01"); // Assuming assessments are July 1
+            $startValid = !$startDate || $assessmentDate >= strtotime($startDate);
+            $endValid = !$endDate || $assessmentDate <= strtotime($endDate . ' 23:59:59');
+
+            return $startValid && $endValid;
+        });
+    }
+
+    /**
+     * Append sales history as additional rows
+     */
+    private function appendSalesHistory($output, array $sales)
+    {
+        if (empty($sales)) return;
+
+        fputcsv($output, []); // Empty row separator
+        fputcsv($output, ['Sales History']);
+        fputcsv($output, ['Owner', 'Date', 'Price', 'Doc #']);
+
+        foreach ($sales as $sale) {
+            fputcsv($output, [
+                $sale['owners'] ?? '',
+                $sale['saledate'] ?? '',
+                $sale['saleprice'] ?? '',
+                $sale['docnum'] ?? ''
+            ]);
+        }
+    }
+
+    /**
+     * Append assessments as additional rows
+     */
+    private function appendAssessments($output, array $assessments)
+    {
+        if (empty($assessments)) return;
+
+        fputcsv($output, []); // Empty row separator
+        fputcsv($output, ['Assessment History']);
+        fputcsv($output, ['Year', 'Land Value', 'Improvement Value', 'Total Value']);
+
+        foreach ($assessments as $assessment) {
+            fputcsv($output, [
+                $assessment['eff_year'] ?? '',
+                $assessment['land_market_value'] ?? '',
+                $assessment['imp_val'] ?? '',
+                $assessment['total_value'] ?? ''
+            ]);
+        }
     }
 
 

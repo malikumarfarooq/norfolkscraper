@@ -22,6 +22,7 @@ class SearchController extends Controller
     public function suggestions(Request $request)
     {
         $term = $request->input('query');
+        $category = $request->input('category', 'All');
 
         $payload = [
             'filters' => [
@@ -32,6 +33,10 @@ class SearchController extends Controller
                 'previousURL' => '',
             ],
         ];
+        // If a specific category is selected, add it to the filters
+        if ($category !== 'All') {
+            $payload['filters']['type'] = $category === 'Account' ? 'account' : strtolower($category);
+        }
 
         $response = Http::withHeaders([
             'Accept' => 'application/json, text/plain, */*',
