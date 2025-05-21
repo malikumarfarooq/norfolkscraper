@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\PropertyDetailsController;
+use App\Http\Controllers\SaleHistoryController;
 
 // Home-search page
 Route::get('/', [SearchController::class, 'index'])->name('home');
@@ -13,3 +14,5 @@ Route::get('/property-details/{id}', [PropertyDetailsController::class, 'show'])
 
 Route::get('/property-details/{id}/export', [PropertyDetailsController::class, 'export'])
     ->name('property.export');
+
+Route::get('/sale-history/{id}', [SaleHistoryController::class, 'show'])->name('sale.history');

@@ -74,7 +74,7 @@
                 <h5 class="card-title">Parcel Header</h5>
                 @php $header = $property['parcel']['header']; @endphp
                 <ul class="list-unstyled">
-                    <li><strong>Street:</strong> {{ $header['PropertyStreet'] }}</li>
+                    <li><strong>Property Address:</strong> {{ $header['PropertyStreet'] }}</li>
                     <li><strong>Total Value:</strong> {{ $header['total_value'] }}</li>
                     <li><strong>Mailing Address:</strong> {{ $header['MailingAddress'] }}</li>
                     <li><strong>GPIN:</strong> {{ $header['GPIN'] }}</li>
@@ -90,6 +90,7 @@
                     <h5 class="card-title">Ownership and Legal Info</h5>
                     <ul class="list-unstyled">
                         <li><strong>Owner Name:</strong> {{ $section0['OwnerName'] }}</li>
+                        <li><strong>PropertyUse:</strong> {{ $section0['PropertyUse'] }}</li>
                         <li><strong>Legal Description:</strong> {{ $section0['LegalDescription'] }}</li>
                         <li><strong>Parcel Area:</strong> {{ $section0['ParcelAreaSF'] }} ({{ $section0['ParcelAcreage'] }})</li>
                         <li><strong>Neighborhood:</strong> {{ $section0['Neighborhood'] }}</li>
@@ -105,45 +106,13 @@
                 <div class="card-body">
                     <h5 class="card-title">Building Details</h5>
                     <ul class="list-unstyled">
-                        <li><strong>Type:</strong> {{ $building['BuildingType'] }}</li>
+                        <li><strong>Building Type:</strong> {{ $building['BuildingType'] }}</li>
                         <li><strong>Year Built:</strong> {{ $building['YearBuilt'] }}</li>
                         <li><strong>Stories:</strong> {{ $building['NumberofStories'] }}</li>
                         <li><strong>Bedrooms:</strong> {{ $building['Bedrooms'] }}</li>
-                        <li><strong>Baths:</strong> {{ $building['FullBaths'] }} Full / {{ $building['HalfBaths'] }} Half</li>
-                        <li><strong>Area:</strong> {{ $building['FinishedLivingArea'] }}</li>
-                        <li><strong>Heating:</strong> {{ $building['Heating'] }}</li>
-                        <li><strong>Cooling:</strong> {{ $building['Cooling'] }}</li>
+                        <li><strong>Full Baths:</strong> {{ $building['FullBaths'] }}</li>
+                        <li><strong>Half Baths:</strong> {{ $building['HalfBaths'] }}</li>
                     </ul>
-                </div>
-            </div>
-        @endif
-
-        {{-- Sales History --}}
-        @php $sales = $property['parcel']['sections']['1'][0] ?? []; @endphp
-        @if(count($sales))
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title">Sales History</h5>
-                    <table class="table table-bordered">
-                        <thead>
-                        <tr>
-                            <th>Owner</th>
-                            <th>Sale Date</th>
-                            <th>Price</th>
-                            <th>Doc #</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        @foreach($sales as $sale)
-                            <tr>
-                                <td>{{ $sale['owners'] }}</td>
-                                <td>{{ $sale['saledate'] }}</td>
-                                <td>{{ $sale['saleprice'] }}</td>
-                                <td>{{ $sale['docnum'] }}</td>
-                            </tr>
-                        @endforeach
-                        </tbody>
-                    </table>
                 </div>
             </div>
         @endif
@@ -158,8 +127,6 @@
                         <thead>
                         <tr>
                             <th>Effective Year</th>
-                            <th>Land Value</th>
-                            <th>Improvement Value</th>
                             <th>Total Value</th>
                         </tr>
                         </thead>
@@ -167,9 +134,40 @@
                         @foreach($assessments as $assess)
                             <tr>
                                 <td>{{ $assess['eff_year'] }}</td>
-                                <td>{{ $assess['land_market_value'] }}</td>
-                                <td>{{ $assess['imp_val'] }}</td>
                                 <td>{{ $assess['total_value'] }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
+        {{-- Sales History --}}
+        @php $sales = $property['parcel']['sections']['1'][0] ?? []; @endphp
+        @if(count($sales))
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Sales History</h5>
+                        <a href="{{ route('sale.history', $id)  }}" class="btn btn-success">
+                            <i class="fas fa-file-csv me-2"></i> Sale History
+                        </a>
+                    </div>
+                    <table class="table table-bordered">
+                        <thead>
+                        <tr>
+                            <th>Owner</th>
+                            <th>Transfer Date</th>
+                            <th>Sale Price</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach($sales as $sale)
+                            <tr>
+                                <td>{{ $sale['owners'] }}</td>
+                                <td>{{ $sale['saledate'] }}</td>
+                                <td>{{ $sale['saleprice'] }}</td>
                             </tr>
                         @endforeach
                         </tbody>
