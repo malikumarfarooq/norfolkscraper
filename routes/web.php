@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ParcelFetchController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\PropertyDetailsController;
@@ -16,3 +17,10 @@ Route::get('/property-details/{id}/export', [PropertyDetailsController::class, '
     ->name('property.export');
 
 Route::get('/sale-history/{id}', [SaleHistoryController::class, 'show'])->name('sale.history');
+
+Route::prefix('parcels')->group(function () {
+    Route::get('/fetch', [ParcelFetchController::class, 'index'])->name('parcels.fetch');
+    Route::post('/fetch/start', [ParcelFetchController::class, 'startFetching'])->name('parcels.fetch.start');
+    Route::post('/fetch/stop', [ParcelFetchController::class, 'stopFetching'])->name('parcels.fetch.stop');
+    Route::get('/fetch/progress', [ParcelFetchController::class, 'getProgress'])->name('parcels.fetch.progress');
+});
