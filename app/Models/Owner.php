@@ -8,4 +8,13 @@ use Illuminate\Database\Eloquent\Model;
 class Owner extends Model
 {
     protected $fillable = ['parcel_id', 'name'];
+
+
+    // In Owner.php
+    public function parcel(): BelongsTo
+    {
+        return $this->belongsTo(Parcel::class);
+    }
+
+
 }

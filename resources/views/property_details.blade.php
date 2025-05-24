@@ -62,8 +62,6 @@
             <div class="card-body">
                 <h5 class="card-title">Basic Information</h5>
                 <p><strong>Property ID:</strong> {{ $property['id'] }}</p>
-                <p><strong>City Latitude:</strong> {{ $property['cty'] }}</p>
-                <p><strong>City Longitude:</strong> {{ $property['ctx'] }}</p>
                 <p><strong>Active:</strong> {{ $property['active'] ? 'Yes' : 'No' }}</p>
             </div>
         </div>
@@ -77,7 +75,6 @@
                     <li><strong>Property Address:</strong> {{ $header['PropertyStreet'] }}</li>
                     <li><strong>Total Value:</strong> {{ $header['total_value'] }}</li>
                     <li><strong>Mailing Address:</strong> {{ $header['MailingAddress'] }}</li>
-                    <li><strong>GPIN:</strong> {{ $header['GPIN'] }}</li>
                 </ul>
             </div>
         </div>
@@ -91,9 +88,7 @@
                     <ul class="list-unstyled">
                         <li><strong>Owner Name:</strong> {{ $section0['OwnerName'] }}</li>
                         <li><strong>PropertyUse:</strong> {{ $section0['PropertyUse'] }}</li>
-                        <li><strong>Legal Description:</strong> {{ $section0['LegalDescription'] }}</li>
-                        <li><strong>Parcel Area:</strong> {{ $section0['ParcelAreaSF'] }} ({{ $section0['ParcelAcreage'] }})</li>
-                        <li><strong>Neighborhood:</strong> {{ $section0['Neighborhood'] }}</li>
+{{--                        <li><strong>Legal Description:</strong> {{ $section0['LegalDescription'] }}</li>--}}
                     </ul>
                 </div>
             </div>

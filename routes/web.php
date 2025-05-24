@@ -16,7 +16,8 @@ Route::get('/property-details/{id}', [PropertyDetailsController::class, 'show'])
 Route::get('/property-details/{id}/export', [PropertyDetailsController::class, 'export'])
     ->name('property.export');
 
-Route::get('/sale-history/{id}', [SaleHistoryController::class, 'show'])->name('sale.history');
+Route::get('/sales-history/{id}', [SaleHistoryController::class, 'show']);
+Route::get('/sales-history/{id}/export', [SaleHistoryController::class, 'export'])->name('sales-history.export');
 
 Route::prefix('parcels')->group(function () {
     Route::get('/fetch', [ParcelFetchController::class, 'index'])->name('parcels.fetch');

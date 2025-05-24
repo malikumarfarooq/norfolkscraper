@@ -12,4 +12,10 @@ class Assessment extends Model
     ];
 
     protected $dates = ['effective_date'];
+// In Assessment.php
+    public function parcel(): BelongsTo
+    {
+        return $this->belongsTo(Parcel::class);
+    }
 }
+

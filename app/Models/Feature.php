@@ -13,4 +13,11 @@ class Feature extends Model
         'heating', 'cooling', 'foundation', 'attic', 'attic_area', 'interior_walls',
         'exterior_cover', 'roof_style', 'roof_cover', 'framing', 'basement_finished_area'
     ];
+// In Feature.php
+    public function parcel(): BelongsTo
+    {
+        return $this->belongsTo(Parcel::class);
+    }
+
 }
+

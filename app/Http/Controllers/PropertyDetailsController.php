@@ -25,6 +25,7 @@ class PropertyDetailsController extends Controller
 
         abort(404, 'Record not found');
     }
+
     /**
      * Export property data as CSV.
      */
@@ -52,22 +53,53 @@ class PropertyDetailsController extends Controller
     }
 
     /**
-     * Generate CSV with all data in single row
+     * Split a name into first and last name components
+     */
+    private function splitName($name): array
+    {
+        $firstName = '';
+        $lastName = '';
+
+        if (!empty($name)) {
+            // Handle names with commas (like "Smith, John")
+            if (strpos($name, ',') !== false) {
+                $parts = explode(',', $name, 2);
+                $lastName = trim($parts[0]);
+                $firstName = trim($parts[1] ?? '');
+            }
+            // Handle names with "&" for multiple owners (like "Devon & Neal")
+            elseif (strpos($name, '&') !== false) {
+                $firstName = $name; // Keep full name as first name
+                $lastName = ''; // No last name for multiple owners
+            }
+            // Standard first/last name splitting
+            else {
+                $parts = explode(' ', $name);
+                $lastName = array_pop($parts);
+                $firstName = implode(' ', $parts);
+            }
+        }
+
+        return [$firstName, $lastName];
+    }
+
+    /**
+     * Generate CSV with all data in single row plus full history
      */
     private function generateSingleRowCsv(array $property, Request $request)
     {
         $output = fopen('php://output', 'w');
 
-        // Prepare headers - updated to match blade file
+        // Prepare headers
         $headers = [
             // Basic Information
-            'Property ID', 'City Latitude', 'City Longitude', 'Active',
+            'Property ID', 'Active',
 
             // Parcel Header
-            'Property Address', 'Total Value', 'Mailing Address', 'GPIN',
+            'Property Address', 'Total Value', 'Mailing Address',
 
             // Ownership and Legal Info
-            'Owner Name', 'PropertyUse', 'Legal Description', 'Parcel Area (SF)', 'Parcel Area (Acres)', 'Neighborhood',
+            'Owner First Name', 'Owner Last Name', 'PropertyUse',
 
             // Building Details
             'Building Type', 'Year Built', 'Stories', 'Bedrooms', 'Full Baths', 'Half Baths',
@@ -84,35 +116,32 @@ class PropertyDetailsController extends Controller
         $ownership = $property['parcel']['sections']['0'][0][0] ?? [];
         $building = $property['parcel']['sections']['0'][1][0] ?? [];
 
-        // Get latest sale
+        // Process owner name
+        [$firstName, $lastName] = $this->splitName($ownership['OwnerName'] ?? '');
+
+        // Get all sales data (not just latest)
         $sales = $this->filterSales($property['parcel']['sections']['1'][0] ?? [], $request);
         $latestSale = $sales[0] ?? [];
 
-        // Get latest assessment
+        // Get all assessments
         $assessments = $this->filterAssessments($property['parcel']['sections']['1'][1] ?? [], $request);
         $latestAssessment = $assessments[0] ?? [];
 
-        // Prepare data row - updated to match blade file
+        // Prepare data row
         $data = [
             // Basic Information
             $property['id'] ?? '',
-            $property['cty'] ?? '',
-            $property['ctx'] ?? '',
             $property['active'] ? 'Yes' : 'No',
 
             // Parcel Header
             $header['PropertyStreet'] ?? '',
             $header['total_value'] ?? '',
             $header['MailingAddress'] ?? '',
-            $header['GPIN'] ?? '',
 
             // Ownership and Legal Info
-            $ownership['OwnerName'] ?? '',
+            $firstName,
+            $lastName,
             $ownership['PropertyUse'] ?? '',
-            $ownership['LegalDescription'] ?? '',
-            $ownership['ParcelAreaSF'] ?? '',
-            $ownership['ParcelAcreage'] ?? '',
-            $ownership['Neighborhood'] ?? '',
 
             // Building Details
             $building['BuildingType'] ?? '',
@@ -136,10 +165,40 @@ class PropertyDetailsController extends Controller
         fputcsv($output, $headers);
         fputcsv($output, $data);
 
-        // Add sales history as additional rows if needed
-        if ($request->input('full_history')) {
-            $this->appendSalesHistory($output, $sales);
-            $this->appendAssessments($output, $assessments);
+        // Always include all sales data
+        if (!empty($sales)) {
+            fputcsv($output, []); // Empty row separator
+            fputcsv($output, ['Sales History']);
+            fputcsv($output, ['Owner First Name', 'Owner Last Name', 'Transfer Date', 'Sale Price', 'Instrument', 'Book/Page']);
+
+            foreach ($sales as $sale) {
+                [$saleFirstName, $saleLastName] = $this->splitName($sale['owners'] ?? '');
+
+                fputcsv($output, [
+                    $saleFirstName,
+                    $saleLastName,
+                    $sale['saledate'] ?? '',
+                    $sale['saleprice'] ?? '',
+                    $sale['instrument'] ?? '',
+                    $sale['book_page'] ?? ''
+                ]);
+            }
+        }
+
+        // Always include all assessments
+        if (!empty($assessments)) {
+            fputcsv($output, []); // Empty row separator
+            fputcsv($output, ['Assessment History']);
+            fputcsv($output, ['Effective Year', 'Total Value', 'Land Value', 'Building Value']);
+
+            foreach ($assessments as $assessment) {
+                fputcsv($output, [
+                    $assessment['eff_year'] ?? '',
+                    $assessment['total_value'] ?? '',
+                    $assessment['land_value'] ?? '',
+                    $assessment['building_value'] ?? ''
+                ]);
+            }
         }
 
         fclose($output);
@@ -191,44 +250,5 @@ class PropertyDetailsController extends Controller
 
             return $startValid && $endValid;
         });
-    }
-
-    /**
-     * Append sales history as additional rows - updated to match blade file
-     */
-    private function appendSalesHistory($output, array $sales)
-    {
-        if (empty($sales)) return;
-
-        fputcsv($output, []); // Empty row separator
-        fputcsv($output, ['Sales History']);
-        fputcsv($output, ['Owner', 'Transfer Date', 'Sale Price']);
-
-        foreach ($sales as $sale) {
-            fputcsv($output, [
-                $sale['owners'] ?? '',
-                $sale['saledate'] ?? '',
-                $sale['saleprice'] ?? ''
-            ]);
-        }
-    }
-
-    /**
-     * Append assessments as additional rows - updated to match blade file
-     */
-    private function appendAssessments($output, array $assessments)
-    {
-        if (empty($assessments)) return;
-
-        fputcsv($output, []); // Empty row separator
-        fputcsv($output, ['Assessment History']);
-        fputcsv($output, ['Effective Year', 'Total Value']);
-
-        foreach ($assessments as $assessment) {
-            fputcsv($output, [
-                $assessment['eff_year'] ?? '',
-                $assessment['total_value'] ?? ''
-            ]);
-        }
     }
 }

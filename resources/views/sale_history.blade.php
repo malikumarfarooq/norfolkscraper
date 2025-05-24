@@ -15,6 +15,15 @@
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">Recent Sales within 1 mile</h5>
 
+                <div class="d-flex align-items-center gap-2">
+                    <!-- Download CSV Button -->
+                    <a href="{{ route('sales-history.export', $currentId) }}"
+                       class="btn btn-sm btn-success"
+                       download>
+                        <i class="fas fa-download me-1"></i> Download All Sales Data
+                    </a>
+
+
                 <form method="GET" action="{{ request()->url() }}" class="d-flex align-items-center gap-2">
                     @if(request()->has('page'))
                         <input type="hidden" name="page" value="{{ request('page') }}">

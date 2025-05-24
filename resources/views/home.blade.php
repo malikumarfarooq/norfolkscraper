@@ -14,7 +14,7 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <label for="primary_search" style="margin-left: 0.25em;">Search</label>
-                        <label for="primary_search" style="margin-left: 19.25em;">Filter</label>
+                        <label for="primary_search" style="margin-left: 14.25em;">Filter</label>
                         <div class="search-container position-relative">
                             <div class="input-group mb-3">
                                 <input type="text" id="search-input" class="form-control form-control-lg"
@@ -48,6 +48,13 @@
                                     <span class="d-none spinner-border spinner-border-sm" id="search-spinner"></span>
                                     <span id="search-text">Search</span>
                                 </button>
+
+
+                                <a href="{{ route('parcels.fetch') }}" class="btn btn-primary" style="margin-left: 1px;">
+                                    Scrap it
+                                </a>
+
+
                             </div>
 
                             <div id="suggestions-container" class="list-group position-absolute w-100 d-none">

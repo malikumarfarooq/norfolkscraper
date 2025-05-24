@@ -13,4 +13,10 @@ class Sale extends Model
     ];
 
     protected $dates = ['sale_date'];
+    // In Sale.php
+    public function parcel(): BelongsTo
+    {
+        return $this->belongsTo(Parcel::class);
+    }
 }
+
