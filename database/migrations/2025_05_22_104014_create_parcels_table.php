@@ -6,41 +6,38 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
-    public function up(): void
+    public function up()
     {
-// database/migrations/xxxx_xx_xx_xxxxxx_create_parcels_table.php
         Schema::create('parcels', function (Blueprint $table) {
-            $table->string('id', 20)->primary(); // Parcel_id
-            $table->string('gpin', 20)->nullable();
-            $table->string('parent_parcel_id', 20)->nullable();
-            $table->string('neighborhood', 20)->nullable();
-            $table->string('property_street')->nullable();
-            $table->string('property_use')->nullable();
-            $table->string('buildings')->nullable();
-            $table->string('section_plat')->nullable();
-            $table->string('house_plate_number')->nullable();
-            $table->text('mailing_address')->nullable();
-            $table->text('legal_description')->nullable();
-            $table->string('parcel_area_sf')->nullable();
-            $table->string('parcel_acreage')->nullable();
-            $table->geometry('bounds')->nullable();
-            $table->decimal('latitude', 10, 8)->nullable();
-            $table->decimal('longitude', 11, 8)->nullable();
+            $table->string('id')->primary();
             $table->boolean('active')->default(true);
+            $table->string('property_address');
+            $table->decimal('total_value', 12, 2)->nullable();
+            $table->string('mailing_address')->nullable();
+            $table->string('owner_name')->nullable();
+            $table->string('property_use')->nullable();
+            $table->string('building_type')->nullable();
+            $table->integer('year_built')->nullable();
+            $table->decimal('stories', 3, 1)->nullable();
+            $table->integer('bedrooms')->nullable();
+            $table->integer('full_baths')->nullable();
+            $table->integer('half_baths')->nullable();
+            $table->string('latest_sale_owner')->nullable();
+            $table->date('latest_sale_date')->nullable();
+            $table->decimal('latest_sale_price', 12, 2)->nullable();
+            $table->date('latest_assessment_year')->nullable();
+            $table->decimal('latest_total_value', 12, 2)->nullable();
+            $table->string('gpin')->nullable();
+//            $table->point('location')->nullable();
             $table->timestamps();
 
             $table->index('gpin');
-            $table->index('neighborhood');
+            $table->index('property_address');
+//            $table->spatialIndex('location');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
+    public function down()
     {
         Schema::dropIfExists('parcels');
     }

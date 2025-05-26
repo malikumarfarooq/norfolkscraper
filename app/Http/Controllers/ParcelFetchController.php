@@ -12,21 +12,21 @@ class ParcelFetchController extends Controller
 {
     public function index()
     {
-        Log::info('Fetch page accessed');
-        $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
+        $progress = FetchProgress::firstOrCreate([], [
+            'current_id' => 10000001,
+            'is_running' => false,
+            'should_stop' => false
+        ]);
         return view('parcels.fetch', compact('progress'));
     }
 
     public function startFetching(Request $request)
     {
-        Log::info('Start fetching request received', ['input' => $request->all()]);
-
         $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
 
         if ($progress->is_running) {
-            Log::warning('Fetch already running');
             return response()->json([
-                'message' => 'Fetching is already in progress',
+                'message' => 'Fetch already in progress',
                 'current_id' => $progress->current_id
             ], 409);
         }
@@ -41,15 +41,10 @@ class ParcelFetchController extends Controller
             'max_id' => $validated['max_id'] ?? null
         ]);
 
-        Log::info('Dispatching fetch job', [
-            'current_id' => $progress->current_id,
-            'max_id' => $progress->max_id
-        ]);
-
         Bus::dispatch(new FetchParcelDataJob($progress->current_id, $progress->max_id));
 
         return response()->json([
-            'message' => 'Fetching started successfully',
+            'message' => 'Fetching started',
             'current_id' => $progress->current_id,
             'max_id' => $progress->max_id
         ]);
@@ -57,31 +52,26 @@ class ParcelFetchController extends Controller
 
     public function stopFetching()
     {
-        Log::info('Stop fetching request received');
-
-        $progress = FetchProgress::first();
-        if (!$progress) {
-            Log::error('No fetch progress record found');
-            return response()->json(['message' => 'No active fetching process'], 404);
-        }
+        $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
 
         if (!$progress->is_running) {
-            Log::warning('Fetch not running when stop requested');
-            return response()->json(['message' => 'No active fetching process'], 409);
+            return response()->json(['message' => 'No active fetch process'], 409);
         }
 
         $progress->update(['should_stop' => true]);
-        Log::info('Fetch stop signal sent', ['current_id' => $progress->current_id]);
-
         return response()->json([
-            'message' => 'Fetching will stop after current record',
+            'message' => 'Stopping fetch process',
             'current_id' => $progress->current_id
         ]);
     }
 
     public function getProgress()
     {
-        $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
+        $progress = FetchProgress::firstOrCreate([], [
+            'current_id' => 10000001,
+            'is_running' => false,
+            'should_stop' => false
+        ]);
 
         return response()->json([
             'current_id' => $progress->current_id,

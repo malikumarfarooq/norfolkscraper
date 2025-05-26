@@ -2,12 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Models\Assessment;
-use App\Models\Feature;
-use App\Models\FetchProgress;
-use App\Models\Owner;
 use App\Models\Parcel;
-use App\Models\Sale;
+use App\Models\FetchProgress;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,6 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class FetchParcelDataJob implements ShouldQueue
 {
@@ -32,193 +29,116 @@ class FetchParcelDataJob implements ShouldQueue
 
     public function handle()
     {
-        Log::info("Starting job for ID: {$this->currentId}");
-
         $progress = FetchProgress::first();
         if (!$progress) {
-            Log::error('No progress record found in job');
+            Log::error('No progress record found');
             return;
         }
 
         if ($progress->should_stop) {
-            Log::info('Job stopped due to stop signal', ['id' => $this->currentId]);
             $progress->update(['is_running' => false]);
+            Log::info('Job stopped by signal', ['id' => $this->currentId]);
             return;
         }
 
-        Log::info("Fetching data for ID: {$this->currentId}");
-
         try {
-            $response = Http::timeout(30)->retry(3, 5000)->get(
-                "https://air.norfolk.gov/api/v1/recordcard/{$this->currentId}"
-            );
+            $response = Http::timeout(30)
+                ->retry(3, 5000)
+                ->get("https://air.norfolk.gov/api/v1/recordcard/{$this->currentId}");
 
             if ($response->successful()) {
-                Log::info("Successfully fetched data for ID: {$this->currentId}");
-                $this->processParcelData($response->json());
+                $this->processResponse($response->json());
             } elseif ($response->status() === 404) {
-                Log::info("Record not found for ID: {$this->currentId}, skipping");
+                Log::info("Parcel not found", ['id' => $this->currentId]);
             } else {
-                Log::error("API request failed for ID: {$this->currentId}", [
-                    'status' => $response->status(),
-                    'body' => $response->body()
+                Log::error("API request failed", [
+                    'id' => $this->currentId,
+                    'status' => $response->status()
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error("Exception fetching ID {$this->currentId}: " . $e->getMessage());
+            Log::error("Fetch error", [
+                'id' => $this->currentId,
+                'error' => $e->getMessage()
+            ]);
         }
 
-        // Update progress
-        $nextId = $this->currentId + 1;
-        $progress->update(['current_id' => $nextId]);
-        Log::info("Progress updated to ID: {$nextId}");
+        $this->updateProgressAndDispatchNext($progress);
+    }
 
-        // Check if we should continue
-        if ($progress->should_stop || ($this->maxId && $nextId > $this->maxId)) {
-            Log::info('Stopping fetch process', [
-                'reason' => $progress->should_stop ? 'manual stop' : 'reached max_id',
-                'last_id' => $this->currentId
-            ]);
-            $progress->update(['is_running' => false]);
+    protected function processResponse(array $data)
+    {
+        if (empty($data['parcel']['header'])) {
+            Log::warning('Invalid parcel data structure', ['id' => $data['id'] ?? null]);
             return;
         }
 
-        // Dispatch next job
-        Log::info("Dispatching next job for ID: {$nextId}");
+        $header = $data['parcel']['header'];
+        $sections = $data['sections'][0] ?? [];
+
+        $parcelData = [
+            'id' => $header['Parcel_id'] ?? $data['id'],
+            'active' => $data['active'] ?? true,
+            'property_address' => $header['PropertyStreet'] ?? null,
+            'total_value' => $this->parseCurrency($header['total_value'] ?? null),
+            'mailing_address' => $header['MailingAddress'] ?? null,
+            'owner_name' => $sections[0][0]['OwnerName'] ?? null,
+            'property_use' => $sections[0][0]['PropertyUse'] ?? null,
+            'building_type' => $sections[0][1]['BuildingType'] ?? null,
+            'year_built' => isset($sections[0][1]['YearBuilt']) ? (int)$sections[0][1]['YearBuilt'] : null,
+            'stories' => isset($sections[0][1]['NumberofStories']) ? (float)$sections[0][1]['NumberofStories'] : null,
+            'bedrooms' => $sections[0][1]['Bedrooms'] ?? null,
+            'full_baths' => $sections[0][1]['FullBaths'] ?? null,
+            'half_baths' => $sections[0][1]['HalfBaths'] ?? null,
+            'gpin' => $header['GPIN'] ?? null,
+        ];
+
+        // Add latest sale data if available
+        if (!empty($sections[2])) {
+            $latestSale = $sections[2][0] ?? null;
+            if ($latestSale) {
+                $parcelData['latest_sale_owner'] = $latestSale['owners'] ?? null;
+                $parcelData['latest_sale_date'] = isset($latestSale['saledate']) ?
+                    Carbon::createFromFormat('m/d/Y', $latestSale['saledate']) : null;
+                $parcelData['latest_sale_price'] = $this->parseCurrency($latestSale['saleprice'] ?? null);
+            }
+        }
+
+        // Add latest assessment data if available
+        if (!empty($sections[5])) {
+            $latestAssessment = $sections[5][0] ?? null;
+            if ($latestAssessment) {
+                $parcelData['latest_assessment_year'] = isset($latestAssessment['eff_year']) ?
+                    Carbon::createFromFormat('m/d/Y', $latestAssessment['eff_year']) : null;
+                $parcelData['latest_total_value'] = $this->parseCurrency($latestAssessment['total_value'] ?? null);
+            }
+        }
+
+        // Add location if coordinates exist
+        if (isset($data['ctx'], $data['cty'])) {
+            $parcelData['location'] = DB::raw("POINT({$data['ctx']}, {$data['cty']})");
+        }
+
+        Parcel::updateOrCreate(['id' => $parcelData['id']], $parcelData);
+        Log::info("Processed parcel", ['id' => $parcelData['id']]);
+    }
+
+    protected function updateProgressAndDispatchNext(FetchProgress $progress)
+    {
+        $nextId = $this->currentId + 1;
+        $progress->update(['current_id' => $nextId]);
+
+        if ($progress->should_stop || ($this->maxId && $nextId > $this->maxId)) {
+            $progress->update(['is_running' => false]);
+            Log::info('Fetching completed', ['last_id' => $this->currentId]);
+            return;
+        }
+
         self::dispatch($nextId, $this->maxId)->delay(now()->addSeconds(1));
     }
 
-    protected function processParcelData(array $data)
+    protected function parseCurrency(?string $value): ?float
     {
-        Log::info("Processing data for parcel", ['id' => $data['id'] ?? null]);
-
-        DB::beginTransaction();
-        try {
-            $parcelData = $data['parcel'] ?? [];
-            $header = $parcelData['header'] ?? [];
-            $bounds = $parcelData['bounds'] ?? null;
-
-            $parcel = Parcel::updateOrCreate(
-                ['id' => $header['Parcel_id'] ?? $data['id']],
-                [
-                    'gpin' => $header['GPIN'] ?? null,
-                    'property_street' => $header['PropertyStreet'] ?? null,
-                    'mailing_address' => $header['MailingAddress'] ?? null,
-                    'bounds' => $bounds ? DB::raw("ST_GeomFromText('$bounds')") : null,
-                    'latitude' => $data['cty'] ?? null,
-                    'longitude' => $data['ctx'] ?? null,
-                    'active' => $data['active'] ?? true,
-                ]
-            );
-
-            // Process owners
-            if (isset($data['sections'][0][0]['OwnerName'])) {
-                $parcel->owners()->updateOrCreate(
-                    ['name' => $data['sections'][0][0]['OwnerName']],
-                    ['name' => $data['sections'][0][0]['OwnerName']]
-                );
-            }
-
-            // Process features
-            if (isset($data['sections'][0][1])) {
-                $featureData = $data['sections'][0][1];
-                $parcel->features()->updateOrCreate(
-                    ['parcel_id' => $parcel->id],
-                    $this->parseFeatureData($featureData)
-                );
-            }
-
-            // Process sales
-            if (isset($data['sections'][0][2])) {
-                foreach ($data['sections'][0][2] as $saleData) {
-                    $this->processSaleData($parcel, $saleData);
-                }
-            }
-
-            // Process assessments
-            if (isset($data['sections'][0][5])) {
-                foreach ($data['sections'][0][5] as $assessmentData) {
-                    $this->processAssessmentData($parcel, $assessmentData);
-                }
-            }
-
-            DB::commit();
-            Log::info("Successfully processed parcel {$parcel->id}");
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error("Error processing parcel data: " . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    protected function parseFeatureData(array $featureData): array
-    {
-        return [
-            'building_type' => $featureData['BuildingType'] ?? null,
-            'stories' => isset($featureData['NumberofStories']) ? (float)$featureData['NumberofStories'] : null,
-            'year_built' => $featureData['YearBuilt'] ?? null,
-            'construction_quality' => $featureData['ConstructionQuality'] ?? null,
-            'finished_living_area' => isset($featureData['FinishedLivingArea']) ?
-                (int)str_replace([',', ' sqft'], '', $featureData['FinishedLivingArea']) : null,
-            'bedrooms' => $featureData['Bedrooms'] ?? null,
-            'full_baths' => $featureData['FullBaths'] ?? null,
-            'half_baths' => $featureData['HalfBaths'] ?? null,
-            'fireplaces' => ($featureData['Fireplaces'] ?? 'No') === 'Yes',
-            'heating' => $featureData['Heating'] ?? null,
-            'cooling' => $featureData['Cooling'] ?? null,
-            'foundation' => $featureData['Foundation'] ?? null,
-            'attic' => ($featureData['Arric'] ?? 'No') === 'Attic',
-            'attic_area' => isset($featureData['AtticArea']) ?
-                (int)str_replace([',', ' sqft'], '', $featureData['AtticArea']) : null,
-            'interior_walls' => $featureData['InteriorWalls'] ?? null,
-            'exterior_cover' => $featureData['ExteriorCover'] ?? null,
-            'roof_style' => $featureData['RoofStyle'] ?? null,
-            'roof_cover' => $featureData['RoofCover'] ?? null,
-            'framing' => $featureData['Framing'] ?? null,
-            'basement_finished_area' => isset($featureData['BasementFinishedArea']) ?
-                (int)str_replace([',', ' sqft'], '', $featureData['BasementFinishedArea']) : null,
-        ];
-    }
-
-    protected function processSaleData($parcel, $saleData)
-    {
-        if (isset($saleData['saledate'])) {
-            $saleDate = \Carbon\Carbon::createFromFormat('m/d/Y', $saleData['saledate']);
-            $salePrice = isset($saleData['saleprice']) ?
-                (float)str_replace(['$', ','], '', $saleData['saleprice']) : null;
-
-            $parcel->sales()->updateOrCreate(
-                [
-                    'sale_date' => $saleDate,
-                    'document_number' => $saleData['docnum'] ?? null
-                ],
-                [
-                    'sale_price' => $salePrice,
-                    'transaction_type' => $saleData['transtype'] ?? null,
-                ]
-            );
-        }
-    }
-
-    protected function processAssessmentData($parcel, $assessmentData)
-    {
-        if (isset($assessmentData['eff_year'])) {
-            $effectiveDate = \Carbon\Carbon::createFromFormat('m/d/Y', $assessmentData['eff_year']);
-            $landValue = isset($assessmentData['land_market_value']) ?
-                (float)str_replace(['$', ','], '', $assessmentData['land_market_value']) : null;
-            $impValue = isset($assessmentData['imp_val']) ?
-                (float)str_replace(['$', ','], '', $assessmentData['imp_val']) : null;
-            $totalValue = isset($assessmentData['total_value']) ?
-                (float)str_replace(['$', ','], '', $assessmentData['total_value']) : null;
-
-            $parcel->assessments()->updateOrCreate(
-                ['effective_date' => $effectiveDate],
-                [
-                    'land_value' => $landValue,
-                    'improvement_value' => $impValue,
-                    'total_value' => $totalValue,
-                ]
-            );
-        }
+        return $value ? (float)preg_replace('/[^0-9.]/', '', $value) : null;
     }
 }

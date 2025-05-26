@@ -1,42 +1,48 @@
 <?php
 
-// app/Models/Parcel.php
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Parcel extends Model
 {
-    protected $primaryKey = 'id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    use HasFactory;
 
     protected $fillable = [
-        'id', 'gpin', 'parent_parcel_id', 'neighborhood', 'property_street',
-        'property_use', 'buildings', 'section_plat', 'house_plate_number',
-        'mailing_address', 'legal_description', 'parcel_area_sf', 'parcel_acreage',
-        'bounds', 'latitude', 'longitude', 'active'
+        'id',
+        'active',
+        'property_address',
+        'total_value',
+        'mailing_address',
+        'owner_name',
+        'property_use',
+        'building_type',
+        'year_built',
+        'stories',
+        'bedrooms',
+        'full_baths',
+        'half_baths',
+        'latest_sale_owner',
+        'latest_sale_date',
+        'latest_sale_price',
+        'latest_assessment_year',
+        'latest_total_value',
+        'gpin',
+//        'location'
     ];
 
-    public function owners(): HasMany
-    {
-        return $this->hasMany(Owner::class, 'parcel_id');
-    }
-
-    public function assessments(): HasMany
-    {
-        return $this->hasMany(Assessment::class, 'parcel_id');
-    }
-
-    public function sales(): HasMany
-    {
-        return $this->hasMany(Sale::class, 'parcel_id');
-    }
-
-    public function features(): HasOne
-    {
-        return $this->hasOne(Feature::class, 'parcel_id');
-    }
+    protected $casts = [
+        'active' => 'boolean',
+        'year_built' => 'integer',
+        'stories' => 'float',
+        'bedrooms' => 'integer',
+        'full_baths' => 'integer',
+        'half_baths' => 'integer',
+        'total_value' => 'float',
+        'latest_sale_price' => 'float',
+        'latest_total_value' => 'float',
+        'latest_sale_date' => 'date',
+        'latest_assessment_year' => 'date',
+    ];
 }
