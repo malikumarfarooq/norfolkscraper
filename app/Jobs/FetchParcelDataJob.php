@@ -93,6 +93,21 @@ class FetchParcelDataJob implements ShouldQueue
             ->get("https://air.norfolk.gov/api/v1/recordcard/{$this->currentId}");
     }
 
+
+    protected function extractYearFromAssessmentDate(?string $date): ?int
+    {
+        if (empty($date)) {
+            return null;
+        }
+
+        try {
+            $date = Carbon::createFromFormat('m/d/Y', $date);
+            return $date->year;
+        } catch (Throwable $e) {
+            Log::warning('Assessment year extraction error', ['date' => $date, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
     protected function processResponse(array $data): ?Parcel
     {
         Log::info('api response', $data);
@@ -133,6 +148,11 @@ class FetchParcelDataJob implements ShouldQueue
         $latestSale = $salesHistory[0] ?? [];
         $latestAssessment = $assessments[0] ?? [];
 
+        // Handle missing sale data more robustly
+        $saleDate = $this->formatDate($latestSale['saledate'] ?? null);
+        $salePrice = $this->parseCurrency($latestSale['saleprice'] ?? null);
+        $saleOwner = isset($latestSale['owners']) ? trim($latestSale['owners']) : null;
+
         return [
             'id' => $header['Parcel_id'] ?? $parcelId,
             'active' => $data['active'] ?? true,
@@ -148,14 +168,24 @@ class FetchParcelDataJob implements ShouldQueue
             'bedrooms' => isset($buildingInfo['Bedrooms']) ? (int) $buildingInfo['Bedrooms'] : null,
             'full_baths' => isset($buildingInfo['FullBaths']) ? (int) $buildingInfo['FullBaths'] : null,
             'half_baths' => isset($buildingInfo['HalfBaths']) ? (int) $buildingInfo['HalfBaths'] : null,
-            'last_sale_date' => $this->formatDate($latestSale['saledate'] ?? null),
-            'last_sale_price' => $this->parseCurrency($latestSale['saleprice'] ?? null),
-            'last_sale_owner' => $latestSale['owners'] ?? null,
+            // Original sale fields
+            'last_sale_date' => $saleDate,
+            'last_sale_price' => $salePrice,
+            'last_sale_owner' => $saleOwner,
             'last_sale_docnum' => isset($latestSale['docnum']) ? trim($latestSale['docnum']) : null,
+            // Assessment fields
             'last_assessment_date' => $this->formatDate($latestAssessment['eff_year'] ?? null),
             'land_value' => $this->parseCurrency($latestAssessment['land_market_value'] ?? null),
             'improvement_value' => $this->parseCurrency($latestAssessment['imp_val'] ?? null),
             'last_assessment_value' => $this->parseCurrency($latestAssessment['total_value'] ?? null),
+
+            // New fields with consistent naming
+            'latest_sale_owner' => $saleOwner,
+            'latest_sale_date' => $saleDate,
+            'latest_sale_price' => $salePrice,
+            'latest_assessment_year' => $this->extractYearFromAssessmentDate($latestAssessment['eff_year'] ?? null),
+            'latest_total_value' => $this->parseCurrency($latestAssessment['total_value'] ?? null),
+
             'created_at' => now(),
             'updated_at' => now(),
         ];
