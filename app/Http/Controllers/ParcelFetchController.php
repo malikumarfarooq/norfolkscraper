@@ -7,6 +7,7 @@ use App\Models\FetchProgress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Response;
 
 class ParcelFetchController extends Controller
 {
@@ -80,4 +81,78 @@ class ParcelFetchController extends Controller
             'should_stop' => $progress->should_stop
         ]);
     }
+
+//    Generate csv
+
+    public function exportToCSV()
+    {
+        $filename = 'parcels_export.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ];
+
+        return Response::stream(function () {
+            $handle = fopen('php://output', 'w');
+
+            ob_start(); // <- Start output buffering
+
+            fputcsv($handle, [
+                'ID',
+                'Active',
+                'Property Address',
+                'Total Value',
+                'Mailing Address',
+                'Owner Name',
+                'Property Use',
+                'Building Type',
+                'Year Built',
+                'Stories',
+                'Bedrooms',
+                'Full Baths',
+                'Half Baths',
+                'Latest Sale Owner',
+                'Latest Sale Date',
+                'Latest Sale Price',
+                'Latest Assessment Year',
+                'Latest Total Value',
+                'GPIN',
+            ]);
+
+            Parcel::chunk(1000, function ($parcels) use ($handle) {
+                foreach ($parcels as $parcel) {
+                    fputcsv($handle, [
+                        $parcel->id,
+                        $parcel->active ? 'Active' : 'Inactive',
+                        $parcel->property_address,
+                        $parcel->total_value,
+                        $parcel->mailing_address,
+                        $parcel->owner_name,
+                        $parcel->property_use,
+                        $parcel->building_type,
+                        $parcel->year_built,
+                        $parcel->stories,
+                        $parcel->bedrooms,
+                        $parcel->full_baths,
+                        $parcel->half_baths,
+                        $parcel->latest_sale_owner,
+                        $parcel->latest_sale_date,
+                        $parcel->latest_sale_price,
+                        $parcel->latest_assessment_year,
+                        $parcel->latest_total_value,
+                        $parcel->gpin,
+                    ]);
+                }
+            });
+
+            fclose($handle);
+            ob_end_flush(); // <- Ensure buffer is flushed
+        }, 200, $headers);
+    }
+
+
 }
