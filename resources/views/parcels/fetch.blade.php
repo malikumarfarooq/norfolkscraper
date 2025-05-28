@@ -33,10 +33,10 @@
                                 Stop Fetching
                             </button>
 
-                            <button onclick="exportCsv(this)" class="btn btn-danger">
-                                <span class="button-text">Download CSV</span>
-                                <span class="spinner-border spinner-border-sm d-none" id="csv-spinner"></span>
+                            <button onclick="window.location.href='{{ route('export.csv') }}'" class="btn btn-primary">
+                                Download CSV
                             </button>
+
 
 
                         </div>
@@ -207,22 +207,6 @@
             }
         });
 
-
-
-        // Generate CSV
-        function exportCsv(button) {
-            const spinner = document.getElementById('csv-spinner');
-            button.querySelector('.button-text').textContent = 'Preparing...';
-            spinner.classList.remove('d-none');
-
-            window.location.href = "{{ route('parcels.export.csv') }}";
-
-            // Optional: Reset button text after few seconds (not necessary for download)
-            setTimeout(() => {
-                spinner.classList.add('d-none');
-                button.querySelector('.button-text').textContent = 'Download CSV';
-            }, 3000);
-        }
     </script>
 
 @endpush

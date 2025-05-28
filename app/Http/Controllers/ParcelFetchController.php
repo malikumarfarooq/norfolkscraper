@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Jobs\FetchParcelDataJob;
 use App\Models\FetchProgress;
+use App\Models\Parcel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ParcelFetchController extends Controller
 {
@@ -83,31 +85,29 @@ class ParcelFetchController extends Controller
     }
 
 //    Generate csv
-
-    public function exportToCSV()
+    public function exportCsv(): StreamedResponse
     {
-        $filename = 'parcels_export.csv';
+        $filename = "parcels_" . date('Y-m-d') . ".csv";
 
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"$filename\"",
-            'Pragma' => 'no-cache',
-            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires' => '0',
+            'Content-Disposition' => "attachment; filename=$filename",
         ];
 
-        return Response::stream(function () {
-            $handle = fopen('php://output', 'w');
+        $parcels = Parcel::all();
 
-            ob_start(); // <- Start output buffering
+        $callback = function() use ($parcels) {
+            $file = fopen('php://output', 'w');
 
-            fputcsv($handle, [
+            // Add CSV headers - now with First Name and Last Name separated
+            fputcsv($file, [
                 'ID',
                 'Active',
                 'Property Address',
                 'Total Value',
                 'Mailing Address',
-                'Owner Name',
+                'First Name',  // New column
+                'Last Name',   // New column
                 'Property Use',
                 'Building Type',
                 'Year Built',
@@ -123,36 +123,41 @@ class ParcelFetchController extends Controller
                 'GPIN',
             ]);
 
-            Parcel::chunk(1000, function ($parcels) use ($handle) {
-                foreach ($parcels as $parcel) {
-                    fputcsv($handle, [
-                        $parcel->id,
-                        $parcel->active ? 'Active' : 'Inactive',
-                        $parcel->property_address,
-                        $parcel->total_value,
-                        $parcel->mailing_address,
-                        $parcel->owner_name,
-                        $parcel->property_use,
-                        $parcel->building_type,
-                        $parcel->year_built,
-                        $parcel->stories,
-                        $parcel->bedrooms,
-                        $parcel->full_baths,
-                        $parcel->half_baths,
-                        $parcel->latest_sale_owner,
-                        $parcel->latest_sale_date,
-                        $parcel->latest_sale_price,
-                        $parcel->latest_assessment_year,
-                        $parcel->latest_total_value,
-                        $parcel->gpin,
-                    ]);
-                }
-            });
+            // Add data rows
+            foreach ($parcels as $parcel) {
+                // Split owner name into first and last name
+                $ownerName = trim($parcel->owner_name);
+                $nameParts = explode(' ', $ownerName);
+                $firstName = $nameParts[0] ?? '';
+                $lastName = implode(' ', array_slice($nameParts, 1)) ?? '';
 
-            fclose($handle);
-            ob_end_flush(); // <- Ensure buffer is flushed
-        }, 200, $headers);
+                fputcsv($file, [
+                    $parcel->id,
+                    $parcel->active ? 'Yes' : 'No',
+                    $parcel->property_address,
+                    $parcel->total_value,
+                    $parcel->mailing_address,
+                    $firstName,  // First name
+                    $lastName,    // Last name
+                    $parcel->property_use,
+                    $parcel->building_type,
+                    $parcel->year_built,
+                    $parcel->stories,
+                    $parcel->bedrooms,
+                    $parcel->full_baths,
+                    $parcel->half_baths,
+                    $parcel->latest_sale_owner,
+                    $parcel->latest_sale_date,
+                    $parcel->latest_sale_price,
+                    $parcel->latest_assessment_year,
+                    $parcel->latest_total_value,
+                    $parcel->gpin,
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
-
-
 }
