@@ -23,6 +23,37 @@ class ParcelFetchController extends Controller
         return view('parcels.fetch', compact('progress'));
     }
 
+//    public function startFetching(Request $request)
+//    {
+//        $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
+//
+//        if ($progress->is_running) {
+//            return response()->json([
+//                'message' => 'Fetch already in progress',
+//                'current_id' => $progress->current_id
+//            ], 409);
+//        }
+//
+//        $validated = $request->validate([
+//            'max_id' => 'nullable|integer|min:'.$progress->current_id
+//        ]);
+//
+//        $progress->update([
+//            'is_running' => true,
+//            'should_stop' => false,
+//            'max_id' => $validated['max_id'] ?? null
+//        ]);
+//
+//        Bus::dispatch(new FetchParcelDataJob($progress->current_id, $progress->max_id));
+//
+//        return response()->json([
+//            'message' => 'Fetching started',
+//            'current_id' => $progress->current_id,
+//            'max_id' => $progress->max_id
+//        ]);
+//    }
+
+
     public function startFetching(Request $request)
     {
         $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
@@ -35,10 +66,12 @@ class ParcelFetchController extends Controller
         }
 
         $validated = $request->validate([
-            'max_id' => 'nullable|integer|min:'.$progress->current_id
+            'start_id' => 'required|integer|min:10000001',
+            'max_id' => 'nullable|integer|min:'.$request->start_id
         ]);
 
         $progress->update([
+            'current_id' => $validated['start_id'],
             'is_running' => true,
             'should_stop' => false,
             'max_id' => $validated['max_id'] ?? null

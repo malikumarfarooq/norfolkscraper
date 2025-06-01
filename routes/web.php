@@ -25,8 +25,6 @@ Route::prefix('parcels')->group(function () {
     Route::post('/fetch/stop', [ParcelFetchController::class, 'stopFetching'])->name('parcels.fetch.stop');
     Route::get('/fetch/progress', [ParcelFetchController::class, 'getProgress'])->name('parcels.fetch.progress');
 
-
     Route::get('/export-csv', [ParcelFetchController::class, 'exportCsv'])->name('export.csv');
-
 
 });

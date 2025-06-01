@@ -1,0 +1,24 @@
+# render.yaml
+services:
+  - type: web
+    name: norfolkscraper
+    runtime: php
+    buildCommand: |
+      composer install --optimize-autoloader --no-dev
+      php artisan key:generate
+      php artisan storage:link
+      php artisan optimize
+    startCommand: php artisan serve --host=0.0.0.0 --port=8080
+    env: php
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_URL
+        value: https://your-app-name.onrender.com
+    database:
+      name: your-db-name
+      plan: free

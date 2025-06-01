@@ -10,13 +10,26 @@
                     <div class="card-body">
                         <div class="mb-4">
                             <h5>Fetch Progress</h5>
-                            <div class="progress mb-2">
-                                <div id="fetch-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            <div class="progress mb-2" style="height: 25px;">
+                                <div id="fetch-progress-bar"
+                                     class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                     role="progressbar"
+                                     style="width: 0%"
+                                     aria-valuenow="0"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    <span id="progress-percentage">0%</span>
+                                </div>
                             </div>
                             <div id="progress-text">
                                 Current ID: {{ $progress->current_id }}<br>
                                 Status: <span id="status-text">{{ $progress->is_running ? 'Running' : 'Stopped' }}</span>
                             </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="start-id" class="form-label">Start ID:</label>
+                            <input type="number" class="form-control" id="start-id" value="{{ $progress->current_id }}" min="10000001" required>
                         </div>
 
                         <div class="mb-3">
@@ -36,9 +49,6 @@
                             <button onclick="window.location.href='{{ route('export.csv') }}'" class="btn btn-primary">
                                 Download CSV
                             </button>
-
-
-
                         </div>
                     </div>
                 </div>
@@ -50,10 +60,23 @@
 @push('styles')
     <style>
         .progress {
-            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 4px;
         }
         .progress-bar {
-            transition: width 0.5s ease;
+            transition: width 0.6s ease;
+            position: relative;
+        }
+        #progress-percentage {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 2px rgba(0,0,0,0.5);
+        }
+        .bg-primary {
+            background-color: #0d6efd !important;
         }
     </style>
 @endpush
@@ -64,7 +87,7 @@
         $(document).ready(function() {
             console.log('[DEBUG] Document ready - fetch script loaded');
 
-            // ✅ Setup CSRF token for all AJAX requests
+            // Setup CSRF token for all AJAX requests
             $.ajaxSetup({
                 headers: {
                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -75,12 +98,6 @@
             let isFetching = {{ $progress->is_running ? 'true' : 'false' }};
             console.log('[DEBUG] Initial fetch state:', isFetching);
 
-            // Verify critical elements
-            console.log('[DEBUG] CSRF Token:', '{{ csrf_token() }}');
-            console.log('[DEBUG] Start Route:', '{{ route("parcels.fetch.start") }}');
-            console.log('[DEBUG] Stop Route:', '{{ route("parcels.fetch.stop") }}');
-            console.log('[DEBUG] Progress Route:', '{{ route("parcels.fetch.progress") }}');
-
             // Start button click handler
             $('#start-btn').click(function(e) {
                 e.preventDefault();
@@ -89,26 +106,31 @@
                 const $btn = $(this);
                 const $spinner = $('#start-spinner');
                 const $text = $('#start-text');
+                const $progressBar = $('#fetch-progress-bar');
 
                 // Show loading state
                 $btn.prop('disabled', true);
                 $text.text('Starting...');
                 $spinner.removeClass('d-none');
 
+                // Reset and initialize progress bar
+                $progressBar.css('width', '0%')
+                    .attr('aria-valuenow', 0)
+                    .addClass('progress-bar-animated progress-bar-striped')
+                    .find('#progress-percentage').text('0%');
+
+                const startId = $('#start-id').val();
                 const maxId = $('#max-id').val();
-                console.log('[DEBUG] Max ID value:', maxId);
+                console.log('[DEBUG] Start ID:', startId, 'Max ID:', maxId);
 
                 $.ajax({
                     url: '{{ route("parcels.fetch.start") }}',
                     method: 'POST',
                     data: {
+                        start_id: startId,
                         max_id: maxId
-                        // ✅ Removed _token
                     },
-                    beforeSend: function() {
-                        console.log('[DEBUG] AJAX request initiating');
-                    },
-                    success: function(response, status, xhr) {
+                    success: function(response) {
                         console.log('[DEBUG] AJAX success:', response);
 
                         isFetching = true;
@@ -119,15 +141,16 @@
                     },
                     error: function(xhr, status, error) {
                         console.error('[ERROR] AJAX error:', error);
-                        console.error('[ERROR] Status:', status);
-                        console.error('[ERROR] Full response:', xhr.responseText);
-
                         alert('Error starting fetch: ' + (xhr.responseJSON?.message || error));
 
                         // Reset button state
                         $btn.prop('disabled', false);
                         $text.text('Start Fetching');
                         $spinner.addClass('d-none');
+
+                        // Reset progress bar
+                        $progressBar.removeClass('progress-bar-animated progress-bar-striped')
+                            .css('width', '0%');
                     },
                     complete: function() {
                         console.log('[DEBUG] AJAX request completed');
@@ -149,9 +172,6 @@
                 $.ajax({
                     url: '{{ route("parcels.fetch.stop") }}',
                     method: 'POST',
-                    data: {
-                        // ✅ Removed _token
-                    },
                     success: function(response) {
                         console.log('[DEBUG] Stop success:', response);
                         $('#status-text').text('Stopping...');
@@ -169,7 +189,8 @@
             // Start progress updates
             function startProgressUpdates() {
                 console.log('[DEBUG] Starting progress updates');
-                intervalId = setInterval(updateProgress, 3000);
+                clearInterval(intervalId); // Clear any existing interval
+                intervalId = setInterval(updateProgress, 1000); // Update more frequently (every 1 second)
                 updateProgress(); // Run immediately
             }
 
@@ -181,9 +202,17 @@
                         console.log('[DEBUG] Progress data:', data);
                         $('#progress-text').html('Current ID: ' + data.current_id + '<br>Status: ' + (data.is_running ? 'Running' : 'Stopped'));
 
+                        const $progressBar = $('#fetch-progress-bar');
+                        const $percentage = $('#progress-percentage');
+
                         if (data.max_id) {
-                            const progress = Math.min(100, ((data.current_id - 10000001) / (data.max_id - 10000001)) * 100);
-                            $('#fetch-progress-bar').css('width', progress + '%').attr('aria-valuenow', progress);
+                            const startId = parseInt($('#start-id').val()) || 10000001;
+                            const progress = Math.min(100, ((data.current_id - startId) / (data.max_id - startId)) * 100);
+                            const roundedProgress = Math.round(progress);
+
+                            $progressBar.css('width', progress + '%')
+                                .attr('aria-valuenow', progress);
+                            $percentage.text(roundedProgress + '%');
                         }
 
                         if (!data.is_running) {
@@ -193,6 +222,7 @@
                             $('#start-btn').prop('disabled', false);
                             $('#stop-btn').prop('disabled', true).text('Stop Fetching');
                             $('#status-text').text('Stopped');
+                            $progressBar.removeClass('progress-bar-animated progress-bar-striped');
                         }
                     })
                     .fail(function(xhr, status, error) {
@@ -203,10 +233,9 @@
             // Initialize if already running
             if (isFetching) {
                 console.log('[DEBUG] Fetching already running, starting progress updates');
+                $('#fetch-progress-bar').addClass('progress-bar-animated progress-bar-striped bg-primary');
                 startProgressUpdates();
             }
         });
-
     </script>
-
 @endpush
