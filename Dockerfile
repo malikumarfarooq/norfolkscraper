@@ -12,16 +12,16 @@ RUN apt-get update && apt-get install -y \
     unzip \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd pdo pgsql pdo_pgsql
 
-# Enable Apache rewrite module (needed for Laravel routing)
+# Enable Apache rewrite module
 RUN a2enmod rewrite
 
-# Suppress Apache FQDN warning
+# Set Apache ServerName to suppress warnings
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
-# 🔥 Set Apache DocumentRoot to Laravel's `public/` directory
+# Point Apache to Laravel's public folder
 RUN sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/public|' /etc/apache2/sites-available/000-default.conf
 
-# 🔥 Configure directory permissions so .htaccess is honored
+# Enable .htaccess in public/ folder
 RUN echo '<Directory /var/www/public>\n\
     AllowOverride All\n\
     Require all granted\n\
@@ -34,16 +34,19 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www
 
-# Copy Laravel application
+# Copy Laravel project files
 COPY . /var/www
 
-# Fix permissions
+# ⚠️ Install Composer dependencies
+RUN composer install --no-dev --optimize-autoloader
+
+# Set correct permissions
 RUN chown -R www-data:www-data /var/www \
     && chmod -R 755 /var/www \
     && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# Expose HTTP port
+# Expose port 80
 EXPOSE 80
 
-# Run Apache in the foreground
+# Run Apache in foreground
 CMD ["apache2-foreground"]
