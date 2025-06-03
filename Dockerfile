@@ -34,9 +34,6 @@ RUN a2enmod rewrite
 # Configure Apache to use Laravel’s public folder
 COPY .docker/apache.conf /etc/apache2/sites-available/000-default.conf
 
-# Generate Laravel key (override in Render env vars later)
-RUN php artisan key:generate
-
 # Expose port 80 (Apache) but Render will use $PORT
 EXPOSE 80
 
