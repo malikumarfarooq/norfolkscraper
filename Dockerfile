@@ -7,11 +7,16 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Apache config (fixed)
+# Apache configuration (FIXED SYNTAX)
 RUN a2enmod rewrite && \
     echo "ServerName localhost" >> /etc/apache2/apache2.conf && \
     sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/public|' /etc/apache2/sites-available/000-default.conf && \
-    echo -e '<Directory /var/www/public>\n\tAllowOverride All\n\tRequire all granted\n</Directory>' > /etc/apache2/conf-available/laravel.conf && \
+    { \
+        echo '<Directory /var/www/public>'; \
+        echo '  AllowOverride All'; \
+        echo '  Require all granted'; \
+        echo '</Directory>'; \
+    } > /etc/apache2/conf-available/laravel.conf && \
     a2enconf laravel
 
 # Composer
