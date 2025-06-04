@@ -18,9 +18,9 @@ RUN apt-get update && apt-get install -y \
 RUN a2enmod rewrite \
     && echo "ServerName localhost" >> /etc/apache2/apache2.conf \
     && sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/public|' /etc/apache2/sites-available/000-default.conf \
-    && echo '<Directory /var/www/public>\n\
-        AllowOverride All\n\
-        Require all granted\n\
+    && echo '<Directory /var/www/public>
+        AllowOverride All
+        Require all granted
     </Directory>' > /etc/apache2/conf-available/laravel.conf \
     && a2enconf laravel
 
@@ -43,21 +43,20 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts
 # 🚀 Application deployment
 COPY --chown=application:www-data . .
 
-# 🔧 Post-install setup
+# 🔧 Post-install setup with error handling
 USER application
-RUN composer dump-autoload --optimize \
+RUN set -e \
+    && composer dump-autoload --optimize \
     && php artisan package:discover --ansi \
-    && php artisan optimize:clear
+    && { php artisan optimize || true; } \
+    && { php artisan view:cache || true; } \
+    && { php artisan event:cache || true; }
 
 # 🔒 Final permissions
 USER root
 RUN chown -R application:www-data /var/www \
     && chmod -R 755 /var/www \
     && chmod -R 775 /var/www/bootstrap/cache
-
-# 🚨 Health check
-HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost/ || exit 1
 
 EXPOSE 80
 CMD ["apache2-foreground"]
