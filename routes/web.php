@@ -33,7 +33,7 @@ Route::prefix('parcels')->group(function () {
         ->name('parcels.export.by-sale-groups');
 
     Route::get('/export-csv', [ParcelFetchController::class, 'exportCsv'])->name('export.csv');
-    Route::get('/complaints/{gpin}', [PropertyDetailsController::class, 'complaints']);
+//    Route::get('/complaints/{gpin}', [PropertyDetailsController::class, 'complaints']);
 });
 
 

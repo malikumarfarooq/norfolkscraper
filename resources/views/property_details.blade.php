@@ -172,59 +172,59 @@
         @endif
 
         {{-- Complaints Section --}}
-        @if (!empty($complaints) && is_array($complaints))
-            @php
-                $topComplaints = array_slice($complaints, 0, 3);
-            @endphp
+{{--        @if (!empty($complaints) && is_array($complaints))--}}
+{{--            @php--}}
+{{--                $topComplaints = array_slice($complaints, 0, 3);--}}
+{{--            @endphp--}}
 
-            @if (count($topComplaints))
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <h5 class="card-title mb-3">Complaint Details</h5>
-                        <table class="table table-bordered">
-                            <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>GPIN</th>
-                                <th>Complaint Type</th>
-                                <th>Subtype</th>
-                                <th>Status</th>
-                                <th>Created Date</th>
-                                <th>Inspection Status</th>
-                                <th>Inspection Date</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @foreach ($topComplaints as $index => $complaint)
-                                <tr>
-                                    <td>{{ $index + 1 }}</td>
-                                    <td>{{ $complaint['gpin'] ?? 'N/A' }}</td>
-                                    <td>{{ $complaint['complaint_type'] ?? 'N/A' }}</td>
-                                    <td>{{ $complaint['complaint_subtype'] ?? 'N/A' }}</td>
-                                    <td>{{ $complaint['complaint_status'] ?? 'N/A' }}</td>
-                                    <td>
-                                        {{ isset($complaint['complaint_created_date'])
-                                            ? \Carbon\Carbon::parse($complaint['complaint_created_date'])->format('m/d/Y')
-                                            : 'N/A' }}
-                                    </td>
-                                    <td>{{ $complaint['inspection_status'] ?? 'N/A' }}</td>
-                                    <td>
-                                        {{ isset($complaint['inspection_created_date'])
-                                            ? \Carbon\Carbon::parse($complaint['inspection_created_date'])->format('m/d/Y')
-                                            : 'N/A' }}
-                                    </td>
-                                </tr>
-                            @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            @else
-                <div class="alert alert-warning">No complaints available.</div>
-            @endif
-        @else
-            <div class="alert alert-info">No complaints found for this property.</div>
-        @endif
+{{--            @if (count($topComplaints))--}}
+{{--                <div class="card mb-4">--}}
+{{--                    <div class="card-body">--}}
+{{--                        <h5 class="card-title mb-3">Complaint Details</h5>--}}
+{{--                        <table class="table table-bordered">--}}
+{{--                            <thead>--}}
+{{--                            <tr>--}}
+{{--                                <th>#</th>--}}
+{{--                                <th>GPIN</th>--}}
+{{--                                <th>Complaint Type</th>--}}
+{{--                                <th>Subtype</th>--}}
+{{--                                <th>Status</th>--}}
+{{--                                <th>Created Date</th>--}}
+{{--                                <th>Inspection Status</th>--}}
+{{--                                <th>Inspection Date</th>--}}
+{{--                            </tr>--}}
+{{--                            </thead>--}}
+{{--                            <tbody>--}}
+{{--                            @foreach ($topComplaints as $index => $complaint)--}}
+{{--                                <tr>--}}
+{{--                                    <td>{{ $index + 1 }}</td>--}}
+{{--                                    <td>{{ $complaint['gpin'] ?? 'N/A' }}</td>--}}
+{{--                                    <td>{{ $complaint['complaint_type'] ?? 'N/A' }}</td>--}}
+{{--                                    <td>{{ $complaint['complaint_subtype'] ?? 'N/A' }}</td>--}}
+{{--                                    <td>{{ $complaint['complaint_status'] ?? 'N/A' }}</td>--}}
+{{--                                    <td>--}}
+{{--                                        {{ isset($complaint['complaint_created_date'])--}}
+{{--                                            ? \Carbon\Carbon::parse($complaint['complaint_created_date'])->format('m/d/Y')--}}
+{{--                                            : 'N/A' }}--}}
+{{--                                    </td>--}}
+{{--                                    <td>{{ $complaint['inspection_status'] ?? 'N/A' }}</td>--}}
+{{--                                    <td>--}}
+{{--                                        {{ isset($complaint['inspection_created_date'])--}}
+{{--                                            ? \Carbon\Carbon::parse($complaint['inspection_created_date'])->format('m/d/Y')--}}
+{{--                                            : 'N/A' }}--}}
+{{--                                    </td>--}}
+{{--                                </tr>--}}
+{{--                            @endforeach--}}
+{{--                            </tbody>--}}
+{{--                        </table>--}}
+{{--                    </div>--}}
+{{--                </div>--}}
+{{--            @else--}}
+{{--                <div class="alert alert-warning">No complaints available.</div>--}}
+{{--            @endif--}}
+{{--        @else--}}
+{{--            <div class="alert alert-info">No complaints found for this property.</div>--}}
+{{--        @endif--}}
 
         {{--        End the complaints--}}
 

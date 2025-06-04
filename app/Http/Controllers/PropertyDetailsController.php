@@ -20,27 +20,32 @@ class PropertyDetailsController extends Controller
 
         if ($response->successful()) {
             $property = $response->json();
-            $gpin = $property['parcel']['header']['GPIN'] ?? null;
+//            $gpin = $property['parcel']['header']['GPIN'] ?? null;
 //            dd($gpin);
 
             // Initialize complaints variable
             $complaints = null;
 
             // If we have a GPIN, fetch code enforcement data
-            if ($gpin) {
-                $complaintsResponse = Http::get("https://api.spatialest.com/v1/va/norfolk/code-enforcements/{$gpin}");
-
-                if ($complaintsResponse->successful()) {
-//                    $complaints = $complaintsResponse->json();
-                    $complaints = $complaintsResponse->json()['payload']['code-enforcement'] ?? [];
-                }else{
-                    $complaints = null;
-                }
-            }else{
-                $complaints = null;
-            }
+//            if ($gpin) {
+//                $complaintsResponse = Http::get("https://api.spatialest.com/v1/va/norfolk/code-enforcements/{$gpin}");
+//
+//                if ($complaintsResponse->successful()) {
+////                    $complaints = $complaintsResponse->json();
+//                    $complaints = $complaintsResponse->json()['payload']['code-enforcement'] ?? [];
+//                }else{
+//                    $complaints = null;
+//                }
+//            }else{
+//                $complaints = null;
+//            }
 //                dd($complaints);
-            return view('property_details', compact('property','id', 'complaints'));
+            return view('property_details',
+                compact(
+                    'property',
+                    'id',
+//                    'complaints'
+                ));
         }
 
         abort(404, 'Record not found');
