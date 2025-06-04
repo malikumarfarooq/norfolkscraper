@@ -23,6 +23,12 @@
                         <i class="fas fa-download me-1"></i> Download All Sales Data
                     </a>
 
+{{--                    0$ sale history--}}
+                    <a href="{{ route('sale.history.export.zero', $currentId) }}"
+                       class="btn btn-danger me-2">
+                        <i class="fas fa-file-csv me-2"></i> Export $0 Sales
+                    </a>
+{{--                    End of 0$ sale button--}}
 
                 <form method="GET" action="{{ request()->url() }}" class="d-flex align-items-center gap-2">
                     @if(request()->has('page'))
@@ -78,9 +84,6 @@
                                     <td>
                                         {{ ($displayData['Sale Price']['prefix'] ?? '') . ($displayData['Sale Price']['value'] ?? '') }}
                                     </td>
-{{--                                    <td>{{ $displayData['Sale Type']['value'] ?? '' }}</td>--}}
-{{--                                    <td>{{ $displayData['Neighborhood']['value'] ?? '' }}</td>--}}
-{{--                                    <td>{{ $sale['distance'] }}</td>--}}
                                 </tr>
                             @endforeach
                             </tbody>

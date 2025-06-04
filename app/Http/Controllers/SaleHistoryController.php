@@ -106,4 +106,60 @@ class SaleHistoryController extends Controller
     {
         return preg_replace('/[^0-9.]/', '', $price);
     }
+
+    public function exportZeroSales($id): StreamedResponse
+    {
+        $response = Http::get("{$this->apiBaseUrl}/{$id}");
+
+        if (!$response->successful()) {
+            abort(404, 'Sale history not found.');
+        }
+
+        $data = $response->json();
+        $items = collect($data['body'] ?? []);
+
+        // Filter only $0 sales
+        $zeroSales = $items->filter(function ($item) {
+            $displayValues = $this->extractDisplayValues($item['display'] ?? []);
+            $price = $this->cleanPrice($displayValues['saleprice'] ?? '');
+            return $price === '0' || $price === '0.00';
+        });
+
+        $fileName = "zero-sales-{$id}-" . now()->format('Y-m-d') . '.csv';
+
+        $callback = function () use ($zeroSales) {
+            $file = fopen('php://output', 'w');
+            fwrite($file, "\xEF\xBB\xBF"); // UTF-8 BOM
+
+            // Headers
+            fputcsv($file, [
+                'Parcel ID', 'GPIN', 'Account', 'Address',
+                'Property Type', 'Sale Date', 'Sale Price',
+            ]);
+
+            // Data rows
+            foreach ($zeroSales as $sale) {
+                $displayValues = $this->extractDisplayValues($sale['display'] ?? []);
+
+                fputcsv($file, [
+                    $sale['ParcelIdentifier'] ?? '',
+                    $displayValues['GPIN'] ?? '',
+                    $displayValues['Account'] ?? '',
+                    $displayValues['PropertyStreet'] ?? '',
+                    $displayValues['PropertyUse'] ?? '',
+                    $displayValues['saledate'] ?? '',
+                    $this->cleanPrice($displayValues['saleprice'] ?? ''),
+                ]);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0'
+        ]);
+    }
 }
