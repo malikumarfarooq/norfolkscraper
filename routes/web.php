@@ -26,5 +26,7 @@ Route::prefix('parcels')->group(function () {
     Route::get('/fetch/progress', [ParcelFetchController::class, 'getProgress'])->name('parcels.fetch.progress');
 
     Route::get('/export-csv', [ParcelFetchController::class, 'exportCsv'])->name('export.csv');
-
+    Route::get('/complaints/{gpin}', [PropertyDetailsController::class, 'complaints']);
 });
+
+
