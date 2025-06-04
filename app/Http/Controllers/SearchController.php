@@ -43,7 +43,7 @@ class SearchController extends Controller
             'Content-Type' => 'application/json',
             'Origin' => 'https://air.norfolk.gov',
             'X-Requested-With' => 'XMLHttpRequest',
-            'X-CSRF-TOKEN' => csrf_token(),
+//            'X-CSRF-TOKEN' => csrf_token(),
         ])->post('https://air.norfolk.gov/api/v2/search/suggestions', $payload);
 
         if ($response->successful()) {
