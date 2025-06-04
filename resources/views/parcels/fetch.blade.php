@@ -49,6 +49,11 @@
                             <button onclick="window.location.href='{{ route('export.csv') }}'" class="btn btn-primary">
                                 Download CSV
                             </button>
+
+                            <a href="{{ route('parcels.export.by-sale-groups') }}" class="btn btn-info">
+                                <i class="fas fa-file-csv me-2"></i> Export by Sale Groups
+                            </a>
+
                         </div>
                     </div>
                 </div>

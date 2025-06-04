@@ -23,36 +23,6 @@ class ParcelFetchController extends Controller
         return view('parcels.fetch', compact('progress'));
     }
 
-//    public function startFetching(Request $request)
-//    {
-//        $progress = FetchProgress::firstOrCreate([], ['current_id' => 10000001]);
-//
-//        if ($progress->is_running) {
-//            return response()->json([
-//                'message' => 'Fetch already in progress',
-//                'current_id' => $progress->current_id
-//            ], 409);
-//        }
-//
-//        $validated = $request->validate([
-//            'max_id' => 'nullable|integer|min:'.$progress->current_id
-//        ]);
-//
-//        $progress->update([
-//            'is_running' => true,
-//            'should_stop' => false,
-//            'max_id' => $validated['max_id'] ?? null
-//        ]);
-//
-//        Bus::dispatch(new FetchParcelDataJob($progress->current_id, $progress->max_id));
-//
-//        return response()->json([
-//            'message' => 'Fetching started',
-//            'current_id' => $progress->current_id,
-//            'max_id' => $progress->max_id
-//        ]);
-//    }
-
 
     public function startFetching(Request $request)
     {
@@ -186,6 +156,107 @@ class ParcelFetchController extends Controller
                     $parcel->latest_total_value,
                     $parcel->gpin,
                 ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    // Add this new method to your ParcelFetchController
+    public function exportBySaleGroups(): StreamedResponse
+    {
+        $filename = "parcels_by_sale_groups_" . date('Y-m-d') . ".csv";
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=$filename",
+        ];
+
+        // Get all parcels grouped by sale price category
+        $parcels = Parcel::all()->groupBy(function($parcel) {
+            // Extract numeric value from sale price (remove $ signs, commas, etc.)
+            $price = (float) preg_replace('/[^0-9.]/', '', $parcel->latest_sale_price);
+
+            if ($price == 0) {
+                return '0$';
+            } elseif ($price == 1) {
+                return '1$';
+            } elseif ($price == 2) {
+                return '2$';
+            } else {
+                return 'Other';
+            }
+        });
+
+        // Sort groups in the order we want: 0$, 1$, 2$, Other
+        $sortedGroups = collect(['0$', '1$', '2$', 'Other'])
+            ->mapWithKeys(function($group) use ($parcels) {
+                return [$group => $parcels->get($group, collect())];
+            });
+
+        $callback = function() use ($sortedGroups) {
+            $file = fopen('php://output', 'w');
+
+            // Add CSV headers
+            fputcsv($file, [
+                'Sale Group',
+                'ID',
+                'Active',
+                'Property Address',
+                'Total Value',
+                'Mailing Address',
+                'First Name',
+                'Last Name',
+                'Property Use',
+                'Building Type',
+                'Year Built',
+                'Stories',
+                'Bedrooms',
+                'Full Baths',
+                'Half Baths',
+                'Latest Sale Owner',
+                'Latest Sale Date',
+                'Latest Sale Price',
+                'Latest Assessment Year',
+                'Latest Total Value',
+                'GPIN',
+            ]);
+
+            // Add data rows grouped by sale price
+            foreach ($sortedGroups as $group => $groupParcels) {
+                foreach ($groupParcels as $parcel) {
+                    // Split owner name into first and last name
+                    $ownerName = trim($parcel->owner_name);
+                    $nameParts = explode(' ', $ownerName);
+                    $firstName = $nameParts[0] ?? '';
+                    $lastName = implode(' ', array_slice($nameParts, 1)) ?? '';
+
+                    fputcsv($file, [
+                        $group, // Sale group column
+                        $parcel->id,
+                        $parcel->active ? 'Yes' : 'No',
+                        $parcel->property_address,
+                        $parcel->total_value,
+                        $parcel->mailing_address,
+                        $firstName,
+                        $lastName,
+                        $parcel->property_use,
+                        $parcel->building_type,
+                        $parcel->year_built,
+                        $parcel->stories,
+                        $parcel->bedrooms,
+                        $parcel->full_baths,
+                        $parcel->half_baths,
+                        $parcel->latest_sale_owner,
+                        $parcel->latest_sale_date,
+                        $parcel->latest_sale_price,
+                        $parcel->latest_assessment_year,
+                        $parcel->latest_total_value,
+                        $parcel->gpin,
+                    ]);
+                }
             }
 
             fclose($file);
