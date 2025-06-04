@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     libpng-dev \
-    libonig-dev \
+    libonid-dev \
     libxml2-dev \
     libpq-dev \
     zip \
@@ -34,22 +34,36 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # 📍 Set working directory
 WORKDIR /var/www
 
-# ✅ COPY ONLY composer files first to install dependencies cleanly
-COPY composer.json composer.lock ./
+# 👤 Create non-root user for Composer (avoid root warnings)
+RUN useradd -r -u 1000 -g www-data application
+USER application
 
-# 🧰 Install Composer dependencies
-RUN composer install --no-dev --optimize-autoloader
+# 1️⃣ First copy only composer files
+COPY --chown=application:www-data composer.json composer.lock ./
 
-# 📦 Now copy the rest of the application
-COPY . .
+# 2️⃣ Install dependencies (without scripts)
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
-# 🔒 Set proper permissions
-RUN chown -R www-data:www-data /var/www \
+# 3️⃣ Copy the rest of the application (excluding ignored files)
+COPY --chown=application:www-data . .
+
+# 4️⃣ Now run the post-install scripts manually
+RUN php artisan package:discover --ansi
+
+# 🔒 Set proper permissions (temporarily switch to root)
+USER root
+RUN chown -R application:www-data /var/www \
     && chmod -R 755 /var/www \
     && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+
+# Create necessary Laravel directories if they don't exist
+RUN mkdir -p /var/www/storage/framework/{cache,views,sessions} \
+    && mkdir -p /var/www/storage/logs \
+    && chown -R application:www-data /var/www/storage \
+    && chmod -R 775 /var/www/storage
 
 # 🌐 Expose HTTP port
 EXPOSE 80
 
-# ▶️ Start Apache
+# ▶️ Start Apache (must run as root)
 CMD ["apache2-foreground"]
