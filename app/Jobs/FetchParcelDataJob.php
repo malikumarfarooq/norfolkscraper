@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Parcel;
-use App\Models\FetchProgress;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,182 +16,146 @@ use Throwable;
 
 class FetchParcelDataJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, Batchable;
 
-    protected int $currentId;
-    protected ?int $maxId;
+    public $timeout = 300; // 5 minutes
+    public $tries = 3;
+    public $backoff = [30, 60, 120];
 
-    public function __construct(int $currentId, ?int $maxId = null)
+    protected string $taxAccountNumber;
+    protected int $propertyId;
+    public $batchId;
+
+    public function __construct(string $taxAccountNumber, int $propertyId, string $batchId = null)
     {
-        $this->currentId = $currentId;
-        $this->maxId = $maxId;
+        $this->taxAccountNumber = $taxAccountNumber;
+        $this->propertyId = $propertyId;
+        $this->batchId = $batchId;
     }
 
     public function handle(): void
     {
-        $progress = $this->getProgressRecord();
-
-        if (!$progress || $this->shouldStopProcessing($progress)) {
+        if ($this->batch() && $this->batch()->cancelled()) {
+            Log::info('Job cancelled - batch cancelled', [
+                'tax_account' => $this->taxAccountNumber,
+                'property_id' => $this->propertyId
+            ]);
             return;
         }
 
-        $this->processParcelData($progress);
-    }
+        $startTime = microtime(true);
 
-    protected function getProgressRecord(): ?FetchProgress
-    {
-        $progress = FetchProgress::first();
-
-        if (!$progress) {
-            Log::error('No progress record found');
-            return null;
-        }
-
-        return $progress;
-    }
-
-    protected function shouldStopProcessing(FetchProgress $progress): bool
-    {
-        if ($progress->should_stop) {
-            $progress->update(['is_running' => false]);
-            Log::info('Job stopped by signal', ['id' => $this->currentId]);
-            return true;
-        }
-
-        return false;
-    }
-
-    protected function processParcelData(FetchProgress $progress): void
-    {
         try {
             $response = $this->makeApiRequest();
 
             if ($response->successful()) {
                 $this->processResponse($response->json());
+
+                // ✅ Manually increment processed_jobs in the DB
+                \App\Models\ParcelFetchBatch::where('batch_id', $this->batchId)
+                    ->increment('processed_jobs');
             } elseif ($response->status() === 404) {
-                Log::info("Parcel not found", ['id' => $this->currentId]);
-            } else {
-                Log::error("API request failed", [
-                    'id' => $this->currentId,
-                    'status' => $response->status()
+                Log::warning("Parcel not found", [
+                    'tax_account' => $this->taxAccountNumber,
+                    'property_id' => $this->propertyId
                 ]);
+            } else {
+                $this->handleApiError($response);
             }
-        } catch (Throwable $e) {
-            Log::error("Fetch error", [
-                'id' => $this->currentId,
-                'error' => $e->getMessage()
+
+        } catch (\Throwable $e) {
+            $this->handleJobFailure($e);
+            throw $e;
+        } finally {
+            Log::info('Job processing completed', [
+                'tax_account' => $this->taxAccountNumber,
+                'property_id' => $this->propertyId,
+                'duration_sec' => round(microtime(true) - $startTime, 2)
             ]);
         }
-
-        $this->updateProgressAndDispatchNext($progress);
     }
-
     protected function makeApiRequest()
     {
-        return Http::timeout(30)
-            ->retry(3, 5000)
-            ->get("https://air.norfolk.gov/api/v1/recordcard/{$this->currentId}");
+        $url = "https://air.norfolk.gov/api/v1/recordcard/{$this->taxAccountNumber}";
+
+        return Http::withHeaders([
+            'Accept' => 'application/json',
+            'User-Agent' => 'Laravel/ParcelFetcher/1.0',
+            'X-Property-ID' => $this->propertyId
+        ])
+            ->timeout(60)
+            ->retry(3, 5000, function($exception) {
+                Log::warning('API request failed, retrying...', [
+                    'tax_account' => $this->taxAccountNumber,
+                    'error' => $exception->getMessage()
+                ]);
+                return true;
+            })
+            ->get($url);
     }
 
-
-    protected function extractYearFromAssessmentDate(?string $date): ?int
+    protected function processResponse(array $data): void
     {
-        if (empty($date)) {
-            return null;
+        if (empty($data['parcel']['header'])) {
+            throw new \Exception('Invalid API response - missing parcel header');
         }
 
-        try {
-            $date = Carbon::createFromFormat('m/d/Y', $date);
-            return $date->year;
-        } catch (Throwable $e) {
-            Log::warning('Assessment year extraction error', ['date' => $date, 'error' => $e->getMessage()]);
-            return null;
-        }
-    }
-    protected function processResponse(array $data): ?Parcel
-    {
-        Log::info('api response', $data);
-
-        try {
-            $parcelId = $data['id'] ?? null;
-            Log::info('START PROCESSING', ['id' => $parcelId]);
-
-            if (empty($data['parcel']['header'])) {
-                Log::error('Missing parcel header', ['id' => $parcelId]);
-                return null;
-            }
-
-            $parcelData = $this->prepareParcelData($data);
-            return $this->saveParcelData($parcelData);
-
-        } catch (Throwable $e) {
-            Log::error('PROCESSING FAILED', [
-                'id' => $parcelId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            throw $e;
-        }
+        $parcelData = $this->transformData($data);
+        $this->saveParcel($parcelData);
     }
 
-    protected function prepareParcelData(array $data): array
+    protected function transformData(array $data): array
     {
         $header = $data['parcel']['header'];
         $sections = $data['parcel']['sections'] ?? [];
-        $parcelId = $data['id'] ?? null;
 
-        $ownerInfo = $this->extractNestedData($sections, ['0', '0', '0']);
-        $buildingInfo = $this->extractNestedData($sections, ['0', '1', '0']);
-        $salesHistory = $this->extractNestedData($sections, ['1', '0']) ?? [];
-        $assessments = $this->extractNestedData($sections, ['1', '1']) ?? [];
+        $ownerInfo = $this->getNestedData($sections, ['0', '0', '0']);
+        $buildingInfo = $this->getNestedData($sections, ['0', '1', '0']);
+        $salesHistory = $this->getNestedData($sections, ['1', '0']) ?? [];
+        $assessments = $this->getNestedData($sections, ['1', '1']) ?? [];
 
         $latestSale = $salesHistory[0] ?? [];
         $latestAssessment = $assessments[0] ?? [];
 
-        // Handle missing sale data more robustly
-        $saleDate = $this->formatDate($latestSale['saledate'] ?? null);
-        $salePrice = $this->parseCurrency($latestSale['saleprice'] ?? null);
-        $saleOwner = isset($latestSale['owners']) ? trim($latestSale['owners']) : null;
-
         return [
-            'id' => $header['Parcel_id'] ?? $parcelId,
+            'id' => $header['Parcel_id'] ?? $data['id'] ?? null,
+            'property_id' => $this->propertyId,
             'active' => $data['active'] ?? true,
             'property_address' => $header['PropertyStreet'] ?? null,
-            'total_value' => $this->parseCurrency($header['total_value'] ?? null),
             'mailing_address' => $header['MailingAddress'] ?? null,
             'gpin' => $header['GPIN'] ?? null,
             'owner_name' => $ownerInfo['OwnerName'] ?? null,
             'property_use' => $ownerInfo['PropertyUse'] ?? null,
             'building_type' => $buildingInfo['BuildingType'] ?? null,
-            'year_built' => isset($buildingInfo['YearBuilt']) ? (int) $buildingInfo['YearBuilt'] : null,
-            'stories' => isset($buildingInfo['NumberofStories']) ? (float) $buildingInfo['NumberofStories'] : null,
-            'bedrooms' => isset($buildingInfo['Bedrooms']) ? (int) $buildingInfo['Bedrooms'] : null,
-            'full_baths' => isset($buildingInfo['FullBaths']) ? (int) $buildingInfo['FullBaths'] : null,
-            'half_baths' => isset($buildingInfo['HalfBaths']) ? (int) $buildingInfo['HalfBaths'] : null,
-            // Original sale fields
-            'last_sale_date' => $saleDate,
-            'last_sale_price' => $salePrice,
-            'last_sale_owner' => $saleOwner,
-            'last_sale_docnum' => isset($latestSale['docnum']) ? trim($latestSale['docnum']) : null,
-            // Assessment fields
-            'last_assessment_date' => $this->formatDate($latestAssessment['eff_year'] ?? null),
+            'year_built' => $this->parseInt($buildingInfo['YearBuilt'] ?? null),
+            'stories' => $this->parseFloat($buildingInfo['NumberofStories'] ?? null),
+            'bedrooms' => $this->parseInt($buildingInfo['Bedrooms'] ?? null),
+            'full_baths' => $this->parseInt($buildingInfo['FullBaths'] ?? null),
+            'half_baths' => $this->parseInt($buildingInfo['HalfBaths'] ?? null),
+            'latest_sale_owner' => $this->cleanString($latestSale['owners'] ?? null),
+            'latest_sale_date' => $this->parseDate($latestSale['saledate'] ?? null),
+            'latest_sale_price' => $this->parseCurrency($latestSale['saleprice'] ?? null),
+            'latest_sale_docnum' => $this->cleanString($latestSale['docnum'] ?? null),
+            'latest_assessment_year' => $this->parseAssessmentYear($latestAssessment['eff_year'] ?? null),
             'land_value' => $this->parseCurrency($latestAssessment['land_market_value'] ?? null),
             'improvement_value' => $this->parseCurrency($latestAssessment['imp_val'] ?? null),
-            'last_assessment_value' => $this->parseCurrency($latestAssessment['total_value'] ?? null),
-
-            // New fields with consistent naming
-            'latest_sale_owner' => $saleOwner,
-            'latest_sale_date' => $saleDate,
-            'latest_sale_price' => $salePrice,
-            'latest_assessment_year' => $this->extractYearFromAssessmentDate($latestAssessment['eff_year'] ?? null),
             'latest_total_value' => $this->parseCurrency($latestAssessment['total_value'] ?? null),
-
+            'total_value' => $this->parseCurrency($header['total_value'] ?? null),
             'created_at' => now(),
             'updated_at' => now(),
         ];
     }
 
-    protected function extractNestedData(array $data, array $keys)
+    protected function saveParcel(array $data): Parcel
+    {
+        return Parcel::updateOrCreate(
+            ['id' => $data['id']],
+            $data
+        );
+    }
+
+    // Helper methods
+    protected function getNestedData(array $data, array $keys)
     {
         foreach ($keys as $key) {
             if (!isset($data[$key])) {
@@ -202,59 +166,78 @@ class FetchParcelDataJob implements ShouldQueue
         return $data;
     }
 
-    protected function parseCurrency(?string $value): ?float
+    protected function parseInt($value): ?int
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        return (float) preg_replace('/[^0-9.]/', '', $value);
+        return is_numeric($value) ? (int)$value : null;
     }
 
-    protected function formatDate(?string $date): ?string
+    protected function parseFloat($value): ?float
     {
-        if (empty($date)) {
-            return null;
-        }
+        return is_numeric($value) ? (float)$value : null;
+    }
 
+    protected function parseCurrency($value): ?float
+    {
+        if ($value === null) return null;
+        return (float)preg_replace('/[^0-9.]/', '', $value);
+    }
+
+    protected function parseDate(?string $date): ?string
+    {
         try {
-            return Carbon::createFromFormat('m/d/Y', $date)->format('Y-m-d');
-        } catch (Throwable $e) {
-            Log::warning('Date format error', ['date' => $date, 'error' => $e->getMessage()]);
+            return $date ? Carbon::createFromFormat('m/d/Y', $date)->format('Y-m-d') : null;
+        } catch (\Exception $e) {
             return null;
         }
     }
 
-    protected function saveParcelData(array $parcelData): ?Parcel
+    protected function parseAssessmentYear(?string $date): ?int
     {
-        $result = Parcel::updateOrCreate(
-            ['id' => $parcelData['id']],
-            $parcelData
-        );
+        try {
+            return $date ? Carbon::createFromFormat('m/d/Y', $date)->year : null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
 
-        Log::info('SAVE RESULT', [
-            'id' => $parcelData['id'],
-            'action' => $result->wasRecentlyCreated ? 'CREATED' : 'UPDATED',
-            'owner_name' => $result->owner_name,
-            'building_type' => $result->building_type,
-            'year_built' => $result->year_built,
-            'last_sale_price' => $result->last_sale_price,
-            'last_assessment_value' => $result->last_assessment_value
+    protected function cleanString(?string $value): ?string
+    {
+        return $value ? trim($value) : null;
+    }
+
+    protected function handleApiError($response): void
+    {
+        $errorData = [
+            'tax_account' => $this->taxAccountNumber,
+            'property_id' => $this->propertyId,
+            'status' => $response->status(),
+            'response' => $response->body()
+        ];
+
+        Log::error("API request failed", $errorData);
+        throw new \Exception("API request failed with status: {$response->status()}");
+    }
+
+    protected function handleJobFailure(Throwable $e): void
+    {
+        Log::error("Job failed", [
+            'tax_account' => $this->taxAccountNumber,
+            'property_id' => $this->propertyId,
+            'error' => $e->getMessage(),
+            'exception' => get_class($e)
         ]);
 
-        return $result;
+        if ($this->batch()) {
+            $this->batch()->increment('failed_jobs');
+        }
     }
 
-    protected function updateProgressAndDispatchNext(FetchProgress $progress): void
+    public function failed(Throwable $exception): void
     {
-        $nextId = $this->currentId + 1;
-        $progress->update(['current_id' => $nextId]);
-
-        if ($progress->should_stop || ($this->maxId && $nextId > $this->maxId)) {
-            $progress->update(['is_running' => false]);
-            Log::info('Fetching completed', ['last_id' => $this->currentId]);
-            return;
-        }
-
-        self::dispatch($nextId, $this->maxId)->delay(now()->addSeconds(1));
+        Log::critical('Job failed permanently', [
+            'tax_account' => $this->taxAccountNumber,
+            'property_id' => $this->propertyId,
+            'error' => $exception->getMessage()
+        ]);
     }
 }

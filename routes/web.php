@@ -25,15 +25,11 @@ Route::get('/sale-history/{id}/export-zero', [SaleHistoryController::class, 'exp
 Route::prefix('parcels')->group(function () {
     Route::get('/fetch', [ParcelFetchController::class, 'index'])->name('parcels.fetch');
     Route::post('/fetch/start', [ParcelFetchController::class, 'startFetching'])->name('parcels.fetch.start');
-    Route::post('/fetch/stop', [ParcelFetchController::class, 'stopFetching'])->name('parcels.fetch.stop');
-    Route::get('/fetch/progress', [ParcelFetchController::class, 'getProgress'])->name('parcels.fetch.progress');
-
-
-    Route::get('/parcels/export-by-sale-groups', [ParcelFetchController::class, 'exportBySaleGroups'])
-        ->name('parcels.export.by-sale-groups');
+    Route::get('/fetch/progress/{batchId}', [ParcelFetchController::class, 'checkProgress'])->name('parcels.fetch.progress');
+    Route::get('/fetch/errors/{batchId}', [ParcelFetchController::class, 'getBatchErrors'])->name('parcels.fetch.errors');
 
     Route::get('/export-csv', [ParcelFetchController::class, 'exportCsv'])->name('export.csv');
-//    Route::get('/complaints/{gpin}', [PropertyDetailsController::class, 'complaints']);
+    Route::get('/export-by-sale-groups', [ParcelFetchController::class, 'exportBySaleGroups'])
+        ->name('parcels.export.by-sale-groups');
 });
-
-
+//Route::get('/complaints/{gpin}', [PropertyDetailsController::class, 'complaints']);

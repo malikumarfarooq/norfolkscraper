@@ -2,58 +2,70 @@
 
 @section('content')
     <div class="container">
-        <div class="row justify-content-center" style="margin-top: 100px">
-            <div class="col-md-8">
+        <div class="row justify-content-center mt-5">
+            <div class="col-md-10">
                 <div class="card">
-                    <div class="card-header">Fetch Property Records</div>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Fetch Property Records</span>
+                        @if($lastBatch)
+                            <small class="text-muted">
+                                Last run: {{ $lastBatch->created_at->diffForHumans() }}
+                                ({{ $lastBatch->status }})
+                            </small>
+                        @endif
+                    </div>
 
                     <div class="card-body">
-                        <div class="mb-4">
-                            <h5>Fetch Progress</h5>
-                            <div class="progress mb-2" style="height: 25px;">
-                                <div id="fetch-progress-bar"
-                                     class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                                     role="progressbar"
-                                     style="width: 0%"
-                                     aria-valuenow="0"
-                                     aria-valuemin="0"
-                                     aria-valuemax="100">
-                                    <span id="progress-percentage">0%</span>
+                        <div class="d-flex flex-wrap gap-3 mb-4">
+                            <button id="start-btn" class="btn btn-primary btn-lg">
+                                <span id="start-text">Start Mass Fetching</span>
+                                <span id="start-spinner" class="spinner-border spinner-border-sm d-none"></span>
+                            </button>
+
+                            <button id="export-csv" class="btn btn-success btn-lg">
+                                <i class="fas fa-file-csv me-2"></i> Export All Parcels
+                            </button>
+
+                            <button id="export-groups" class="btn btn-info btn-lg">
+                                <i class="fas fa-file-csv me-2"></i> Export by Sale Groups
+                            </button>
+                        </div>
+
+                        <div id="progress-section" class="d-none">
+                            <div class="progress mb-3" style="height: 25px">
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                     role="progressbar" style="width: 0%">
+                                    <span id="progress-percent">0%</span>
                                 </div>
                             </div>
-                            <div id="progress-text">
-                                Current ID: {{ $progress->current_id }}<br>
-                                Status: <span id="status-text">{{ $progress->is_running ? 'Running' : 'Stopped' }}</span>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Processed:</span>
+                                        <span id="processed-jobs">0</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Total:</span>
+                                        <span id="total-jobs">0</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Status:</span>
+                                        <span id="status-text" class="badge bg-secondary">Pending</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span>Time Remaining:</span>
+                                        <span id="time-remaining">calculating...</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="mb-3">
-                            <label for="start-id" class="form-label">Start ID:</label>
-                            <input type="number" class="form-control" id="start-id" value="{{ $progress->current_id }}" min="10000001" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="max-id" class="form-label">Maximum ID (optional):</label>
-                            <input type="number" class="form-control" id="max-id" value="{{ $progress->max_id ?? '' }}" placeholder="Leave blank to fetch until stopped">
-                        </div>
-
-                        <div class="d-flex gap-2">
-                            <button id="start-btn" class="btn btn-primary" {{ $progress->is_running ? 'disabled' : '' }}>
-                                <span id="start-text">Start Fetching</span>
-                                <span id="start-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
-                            </button>
-                            <button id="stop-btn" class="btn btn-danger" {{ !$progress->is_running ? 'disabled' : '' }}>
-                                Stop Fetching
-                            </button>
-
-                            <button onclick="window.location.href='{{ route('export.csv') }}'" class="btn btn-primary">
-                                Download CSV
-                            </button>
-
-                            <a href="{{ route('parcels.export.by-sale-groups') }}" class="btn btn-info">
-                                <i class="fas fa-file-csv me-2"></i> Export by Sale Groups
-                            </a>
-
+                            <div id="batch-errors" class="mt-3 alert alert-danger d-none">
+                                <h5 class="alert-heading">Errors Encountered</h5>
+                                <div id="error-list" class="mb-0"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -64,24 +76,35 @@
 
 @push('styles')
     <style>
-        .progress {
-            background-color: #e9ecef;
-            border-radius: 4px;
+        #progress-section {
+            transition: all 0.3s ease;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .progress-bar {
-            transition: width 0.6s ease;
-            position: relative;
+
+        #progress-bar {
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        #progress-percentage {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-weight: bold;
-            text-shadow: 0 0 2px rgba(0,0,0,0.5);
+
+        .badge-processing {
+            background-color: #0dcaf0;
         }
-        .bg-primary {
-            background-color: #0d6efd !important;
+
+        .badge-completed {
+            background-color: #198754;
+        }
+
+        .badge-failed {
+            background-color: #dc3545;
+        }
+
+        .badge-cancelled {
+            background-color: #6c757d;
         }
     </style>
 @endpush
@@ -90,156 +113,194 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
-            console.log('[DEBUG] Document ready - fetch script loaded');
+            let batchId = null;
+            let startTime = null;
+            let progressInterval = null;
 
-            // Setup CSRF token for all AJAX requests
-            $.ajaxSetup({
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                }
-            });
+            // Initialize elements
+            const $startBtn = $('#start-btn');
+            const $startText = $('#start-text');
+            const $startSpinner = $('#start-spinner');
+            const $progressSection = $('#progress-section');
+            const $progressBar = $('#progress-bar');
+            const $progressPercent = $('#progress-percent');
+            const $processedJobs = $('#processed-jobs');
+            const $totalJobs = $('#total-jobs');
+            const $statusText = $('#status-text');
+            const $timeRemaining = $('#time-remaining');
+            const $batchErrors = $('#batch-errors');
+            const $errorList = $('#error-list');
 
-            let intervalId;
-            let isFetching = {{ $progress->is_running ? 'true' : 'false' }};
-            console.log('[DEBUG] Initial fetch state:', isFetching);
+            // Button click handlers
+            $('#export-csv').click(() => window.location.href = '{{ route("export.csv") }}');
+            $('#export-groups').click(() => window.location.href = '{{ route("parcels.export.by-sale-groups") }}');
 
-            // Start button click handler
-            $('#start-btn').click(function(e) {
+            $startBtn.click(startBatchProcessing);
+
+            function startBatchProcessing(e) {
                 e.preventDefault();
-                console.log('[DEBUG] Start button clicked');
 
-                const $btn = $(this);
-                const $spinner = $('#start-spinner');
-                const $text = $('#start-text');
-                const $progressBar = $('#fetch-progress-bar');
-
-                // Show loading state
-                $btn.prop('disabled', true);
-                $text.text('Starting...');
-                $spinner.removeClass('d-none');
-
-                // Reset and initialize progress bar
-                $progressBar.css('width', '0%')
-                    .attr('aria-valuenow', 0)
-                    .addClass('progress-bar-animated progress-bar-striped')
-                    .find('#progress-percentage').text('0%');
-
-                const startId = $('#start-id').val();
-                const maxId = $('#max-id').val();
-                console.log('[DEBUG] Start ID:', startId, 'Max ID:', maxId);
+                // Reset UI
+                resetProgressUI();
+                showLoadingState(true);
 
                 $.ajax({
                     url: '{{ route("parcels.fetch.start") }}',
                     method: 'POST',
-                    data: {
-                        start_id: startId,
-                        max_id: maxId
-                    },
-                    success: function(response) {
-                        console.log('[DEBUG] AJAX success:', response);
-
-                        isFetching = true;
-                        $btn.prop('disabled', true);
-                        $('#stop-btn').prop('disabled', false);
-                        $('#status-text').text('Running');
-                        startProgressUpdates();
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('[ERROR] AJAX error:', error);
-                        alert('Error starting fetch: ' + (xhr.responseJSON?.message || error));
-
-                        // Reset button state
-                        $btn.prop('disabled', false);
-                        $text.text('Start Fetching');
-                        $spinner.addClass('d-none');
-
-                        // Reset progress bar
-                        $progressBar.removeClass('progress-bar-animated progress-bar-striped')
-                            .css('width', '0%');
-                    },
-                    complete: function() {
-                        console.log('[DEBUG] AJAX request completed');
-                        $text.text('Start Fetching');
-                        $spinner.addClass('d-none');
-                    }
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    success: handleStartSuccess,
+                    error: handleStartError,
+                    complete: () => showLoadingState(false)
                 });
-            });
-
-            // Stop button click handler
-            $('#stop-btn').click(function(e) {
-                e.preventDefault();
-                console.log('[DEBUG] Stop button clicked');
-
-                const $btn = $(this);
-                $btn.prop('disabled', true);
-                $btn.text('Stopping...');
-
-                $.ajax({
-                    url: '{{ route("parcels.fetch.stop") }}',
-                    method: 'POST',
-                    success: function(response) {
-                        console.log('[DEBUG] Stop success:', response);
-                        $('#status-text').text('Stopping...');
-                        $btn.text('Stopped');
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('[ERROR] Stop failed:', error);
-                        alert('Error stopping fetch: ' + (xhr.responseJSON?.message || error));
-                        $btn.prop('disabled', false);
-                        $btn.text('Stop Fetching');
-                    }
-                });
-            });
-
-            // Start progress updates
-            function startProgressUpdates() {
-                console.log('[DEBUG] Starting progress updates');
-                clearInterval(intervalId); // Clear any existing interval
-                intervalId = setInterval(updateProgress, 1000); // Update more frequently (every 1 second)
-                updateProgress(); // Run immediately
             }
 
-            // Update progress function
-            function updateProgress() {
-                console.log('[DEBUG] Updating progress...');
-                $.get('{{ route("parcels.fetch.progress") }}')
-                    .done(function(data) {
-                        console.log('[DEBUG] Progress data:', data);
-                        $('#progress-text').html('Current ID: ' + data.current_id + '<br>Status: ' + (data.is_running ? 'Running' : 'Stopped'));
+            function resetProgressUI() {
+                $progressBar
+                    .css('width', '0%')
+                    .removeClass('bg-success bg-danger bg-warning')
+                    .addClass('progress-bar-animated');
 
-                        const $progressBar = $('#fetch-progress-bar');
-                        const $percentage = $('#progress-percentage');
+                $progressPercent.text('0%');
+                $statusText
+                    .removeClass('bg-success bg-danger bg-warning')
+                    .addClass('bg-secondary')
+                    .text('Pending');
 
-                        if (data.max_id) {
-                            const startId = parseInt($('#start-id').val()) || 10000001;
-                            const progress = Math.min(100, ((data.current_id - startId) / (data.max_id - startId)) * 100);
-                            const roundedProgress = Math.round(progress);
-
-                            $progressBar.css('width', progress + '%')
-                                .attr('aria-valuenow', progress);
-                            $percentage.text(roundedProgress + '%');
-                        }
-
-                        if (!data.is_running) {
-                            console.log('[DEBUG] Fetching stopped, clearing interval');
-                            clearInterval(intervalId);
-                            isFetching = false;
-                            $('#start-btn').prop('disabled', false);
-                            $('#stop-btn').prop('disabled', true).text('Stop Fetching');
-                            $('#status-text').text('Stopped');
-                            $progressBar.removeClass('progress-bar-animated progress-bar-striped');
-                        }
-                    })
-                    .fail(function(xhr, status, error) {
-                        console.error('[ERROR] Progress update failed:', error);
-                    });
+                $batchErrors.addClass('d-none');
+                $errorList.empty();
             }
 
-            // Initialize if already running
-            if (isFetching) {
-                console.log('[DEBUG] Fetching already running, starting progress updates');
-                $('#fetch-progress-bar').addClass('progress-bar-animated progress-bar-striped bg-primary');
-                startProgressUpdates();
+            function showLoadingState(show) {
+                $startBtn.prop('disabled', show);
+                $startText.text(show ? 'Starting...' : 'Start Mass Fetching');
+                $startSpinner.toggleClass('d-none', !show);
+            }
+
+            function handleStartSuccess(response) {
+                if (!response.batch_id) {
+                    alert("Failed to start batch - no batch ID returned");
+                    return;
+                }
+
+                batchId = response.batch_id;
+                startTime = new Date();
+
+                // Initialize progress display
+                $progressSection.removeClass('d-none').hide().fadeIn(300);
+                $processedJobs.text('0');
+                $totalJobs.text(response.total_accounts);
+                $statusText
+                    .removeClass('bg-secondary')
+                    .addClass('badge-processing')
+                    .text('Processing');
+
+                // Start progress polling
+                progressInterval = setInterval(checkProgress, 2000);
+            }
+
+            function handleStartError(xhr) {
+                const error = xhr.responseJSON?.message || xhr.statusText;
+                alert(`Error starting fetch: ${error}`);
+            }
+
+            function checkProgress() {
+                if (!batchId) return;
+
+                $.get(`/parcels/fetch/progress/${batchId}`)
+                    .done(updateProgress)
+                    .fail(handleProgressError);
+            }
+
+            function updateProgress(response) {
+                // Update progress bar
+                const progress = Math.floor(response.progress);
+                $progressBar.css('width', progress + '%');
+                $progressPercent.text(progress + '%');
+
+                // Update counts
+                $processedJobs.text(response.processedJobs);
+                $totalJobs.text(response.totalJobs);
+
+                // Update status
+                updateStatus(response.status, response.failedJobs);
+
+                // Update time estimate
+                updateTimeEstimate(response.processedJobs, response.totalJobs);
+
+                // Handle completion
+                if (response.progress === 100 || ['completed', 'failed', 'cancelled'].includes(response.status)) {
+                    clearInterval(progressInterval);
+                    $progressBar.removeClass('progress-bar-animated');
+
+                    if (response.failedJobs > 0) {
+                        fetchBatchErrors();
+                    }
+                }
+            }
+
+            function updateStatus(status, failedJobs) {
+                const statusMap = {
+                    'processing': { class: 'badge-processing', text: 'Processing' },
+                    'completed': { class: 'bg-success', text: 'Completed' + (failedJobs ? ' with errors' : '') },
+                    'failed': { class: 'bg-danger', text: 'Failed' },
+                    'cancelled': { class: 'bg-warning', text: 'Cancelled' }
+                };
+
+                const statusInfo = statusMap[status] || statusMap['processing'];
+                $statusText
+                    .removeClass('bg-secondary badge-processing bg-success bg-danger bg-warning')
+                    .addClass(statusInfo.class)
+                    .text(statusInfo.text);
+            }
+
+            function updateTimeEstimate(processed, total) {
+                if (processed <= 0) {
+                    $timeRemaining.text('calculating...');
+                    return;
+                }
+
+                const elapsed = (new Date() - startTime) / 1000;
+                const rate = processed / elapsed;
+                const remaining = Math.max(0, Math.round((total - processed) / rate));
+
+                $timeRemaining.text(formatTime(remaining));
+            }
+
+            function formatTime(seconds) {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                const secs = Math.floor(seconds % 60);
+
+                return [
+                    hours > 0 ? `${hours}h ` : '',
+                    minutes > 0 ? `${minutes}m ` : '',
+                    `${secs}s`
+                ].join('').trim() || 'less than a second';
+            }
+
+            function handleProgressError(xhr) {
+                clearInterval(progressInterval);
+                $statusText
+                    .removeClass('bg-secondary badge-processing bg-success')
+                    .addClass('bg-danger')
+                    .text('Error checking progress');
+            }
+
+            function fetchBatchErrors() {
+                $.get(`/parcels/fetch/errors/${batchId}`)
+                    .done(displayErrors)
+                    .fail(() => console.error('Failed to fetch errors'));
+            }
+
+            function displayErrors(errors) {
+                if (errors.length === 0) return;
+
+                $errorList.append(
+                    errors.map(error =>
+                        `<div class="mb-1">${error.property_id}: ${error.message}</div>`
+                    )
+                );
+                $batchErrors.removeClass('d-none');
             }
         });
     </script>
