@@ -231,7 +231,6 @@ class FetchParcelDataJob implements ShouldQueue
             $this->batch()->increment('failed_jobs');
         }
     }
-
     public function failed(Throwable $exception): void
     {
         Log::critical('Job failed permanently', [

@@ -16,10 +16,18 @@
                     </div>
 
                     <div class="card-body">
+                        <div class="text-center mb-5">
+                            <h1 class="display-4 fw-bold" style="color:dodgerblue">Norfolk Scraper</h1>
+                            <h2 class="h3 text-muted">Extract Property Information Resource</h2>
+                        </div>
                         <div class="d-flex flex-wrap gap-3 mb-4">
                             <button id="start-btn" class="btn btn-primary btn-lg">
                                 <span id="start-text">Start Mass Fetching</span>
                                 <span id="start-spinner" class="spinner-border spinner-border-sm d-none"></span>
+                            </button>
+
+                            <button id="export-csv" class="btn btn-danger btn-lg">
+                                <i class="fas fa-file-csv me-2"></i> Stop Scraping
                             </button>
 
                             <button id="export-csv" class="btn btn-success btn-lg">
