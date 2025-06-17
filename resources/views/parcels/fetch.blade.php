@@ -26,7 +26,7 @@
                                 <span id="start-spinner" class="spinner-border spinner-border-sm d-none"></span>
                             </button>
 
-                            <button id="export-csv" class="btn btn-danger btn-lg">
+                            <button id="" class="btn btn-danger btn-lg">
                                 <i class="fas fa-file-csv me-2"></i> Stop Scraping
                             </button>
 
