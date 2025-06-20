@@ -20,14 +20,14 @@
                             <h1 class="display-4 fw-bold" style="color:dodgerblue">Norfolk Scraper</h1>
                             <h2 class="h3 text-muted">Extract Property Information Resource</h2>
                         </div>
-                        <div class="d-flex flex-wrap gap-3 mb-4">
+                        <div class="d-flex flex-wrap gap-3 mb-4" style="margin-left: 65px;">
                             <button id="start-btn" class="btn btn-primary btn-lg">
-                                <span id="start-text">Start Mass Fetching</span>
+                                <span id="start-text">Start Scraping</span>
                                 <span id="start-spinner" class="spinner-border spinner-border-sm d-none"></span>
                             </button>
 
-                            <button id="" class="btn btn-danger btn-lg">
-                                <i class="fas fa-file-csv me-2"></i> Stop Scraping
+                            <button id="stop-btn" class="btn btn-danger btn-lg" disabled>
+                                <i class="fas fa-stop-circle me-2"></i> Stop Scraping
                             </button>
 
                             <button id="export-csv" class="btn btn-success btn-lg">
@@ -35,7 +35,7 @@
                             </button>
 
                             <button id="export-groups" class="btn btn-info btn-lg">
-                                <i class="fas fa-file-csv me-2"></i> Export by Sale Groups
+                                <i class="fas fa-file-csv me-2"></i> Export by 0$ Sale
                             </button>
                         </div>
 
@@ -84,6 +84,20 @@
 
 @push('styles')
     <style>
+
+
+        #stop-btn:not(:disabled) {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.5);
+        }
+
+        #stop-btn:disabled {
+            opacity: 0.65;
+        }
+
+
+
         #progress-section {
             transition: all 0.3s ease;
             padding: 20px;
@@ -127,6 +141,7 @@
 
             // Initialize elements
             const $startBtn = $('#start-btn');
+            const $stopBtn = $('#stop-btn');
             const $startText = $('#start-text');
             const $startSpinner = $('#start-spinner');
             const $progressSection = $('#progress-section');
@@ -139,15 +154,18 @@
             const $batchErrors = $('#batch-errors');
             const $errorList = $('#error-list');
 
+            // Initialize stop button state
+            $stopBtn.prop('disabled', true);
+
             // Button click handlers
             $('#export-csv').click(() => window.location.href = '{{ route("export.csv") }}');
             $('#export-groups').click(() => window.location.href = '{{ route("parcels.export.by-sale-groups") }}');
 
             $startBtn.click(startBatchProcessing);
+            $stopBtn.click(stopBatchProcessing);
 
             function startBatchProcessing(e) {
                 e.preventDefault();
-
                 // Reset UI
                 resetProgressUI();
                 showLoadingState(true);
@@ -160,6 +178,50 @@
                     error: handleStartError,
                     complete: () => showLoadingState(false)
                 });
+            }
+
+            function stopBatchProcessing() {
+                if (!batchId) {
+                    alert('No active batch to stop');
+                    return;
+                }
+
+                if (!confirm('Are you sure you want to stop the current scraping process?')) {
+                    return;
+                }
+
+                $stopBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Stopping...');
+
+                $.ajax({
+                    url: `/parcels/fetch/stop/${batchId}`,
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert('Scraping process stopped successfully');
+                            $statusText
+                                .removeClass('badge-processing')
+                                .addClass('bg-warning')
+                                .text('Cancelled');
+                            clearInterval(progressInterval);
+                            $stopBtn.prop('disabled', true);
+                        } else {
+                            alert('Failed to stop scraping: ' + (response.message || 'Unknown error'));
+                            resetStopButton();
+                        }
+                    },
+                    error: function(xhr) {
+                        alert('Error stopping scraping: ' + (xhr.responseJSON?.message || xhr.statusText));
+                        resetStopButton();
+                    }
+                });
+            }
+
+            function resetStopButton() {
+                $stopBtn.prop('disabled', false).html('<i class="fas fa-stop-circle me-2"></i> Stop Scraping');
             }
 
             function resetProgressUI() {
@@ -192,6 +254,9 @@
 
                 batchId = response.batch_id;
                 startTime = new Date();
+
+                // Enable the stop button
+                $stopBtn.prop('disabled', false);
 
                 // Initialize progress display
                 $progressSection.removeClass('d-none').hide().fadeIn(300);

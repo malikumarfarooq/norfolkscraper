@@ -105,6 +105,47 @@ class ParcelFetchController extends Controller
         }
     }
 
+    public function stopFetching($batchId)
+    {
+        try {
+            $batch = Bus::findBatch($batchId);
+
+            if (!$batch) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Batch not found'
+                ], 404);
+            }
+
+            if ($batch->cancelled()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Batch already cancelled'
+                ]);
+            }
+
+            $batch->cancel();
+
+            // Update the batch record
+            ParcelFetchBatch::where('batch_id', $batchId)->update([
+                'status' => 'cancelled',
+                'finished_at' => now()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Batch cancelled successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to cancel batch: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function exportCsv(): StreamedResponse
     {
         $filename = "parcels_" . now()->format('Y-m-d_His') . ".csv";
