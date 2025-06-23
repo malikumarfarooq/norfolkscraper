@@ -285,25 +285,30 @@
             }
 
             function updateProgress(response) {
+                // Ensure we have valid numbers
+                const processed = parseInt(response.processedJobs) || 0;
+                const total = parseInt(response.totalJobs) || 1;
+                const progress = response.progress || Math.min(100, Math.round((processed / total) * 100));
+
                 // Update progress bar
-                const progress = Math.floor(response.progress);
                 $progressBar.css('width', progress + '%');
                 $progressPercent.text(progress + '%');
 
                 // Update counts
-                $processedJobs.text(response.processedJobs);
-                $totalJobs.text(response.totalJobs);
+                $processedJobs.text(processed);
+                $totalJobs.text(total);
 
                 // Update status
                 updateStatus(response.status, response.failedJobs);
 
                 // Update time estimate
-                updateTimeEstimate(response.processedJobs, response.totalJobs);
+                updateTimeEstimate(processed, total);
 
                 // Handle completion
-                if (response.progress === 100 || ['completed', 'failed', 'cancelled'].includes(response.status)) {
+                if (progress === 100 || ['completed', 'failed', 'cancelled'].includes(response.status)) {
                     clearInterval(progressInterval);
                     $progressBar.removeClass('progress-bar-animated');
+                    $stopBtn.prop('disabled', true);
 
                     if (response.failedJobs > 0) {
                         fetchBatchErrors();

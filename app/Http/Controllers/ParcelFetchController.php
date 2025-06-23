@@ -78,16 +78,60 @@ class ParcelFetchController extends Controller
         }
     }
 
+//    public function checkProgress($batchId)
+//    {
+//        try {
+//            $batch = Bus::findBatch($batchId);
+//            if (!$batch) {
+//                return response()->json(['error' => 'Batch not found'], 404);
+//            }
+//
+//            $status = $this->determineBatchStatus($batch);
+//            $this->updateBatchRecord($batchId, $batch, $status);
+//
+//            return response()->json([
+//                'id' => $batch->id,
+//                'totalJobs' => $batch->totalJobs,
+//                'pendingJobs' => $batch->pendingJobs,
+//                'failedJobs' => $batch->failedJobs,
+//                'processedJobs' => $batch->processedJobs(),
+//                'progress' => $batch->progress(),
+//                'status' => $status,
+//            ]);
+//
+//        } catch (\Exception $e) {
+//            Log::error("Progress check failed: " . $e->getMessage());
+//            return response()->json(['error' => $e->getMessage()], 500);
+//        }
+//    }
+
+
     public function checkProgress($batchId)
     {
         try {
             $batch = Bus::findBatch($batchId);
+
             if (!$batch) {
                 return response()->json(['error' => 'Batch not found'], 404);
             }
 
+            // Calculate accurate progress
+            $progress = 0;
+            if ($batch->totalJobs > 0) {
+                $progress = (int) round(($batch->processedJobs() / $batch->totalJobs) * 100);
+            }
+
+            // Update batch record
             $status = $this->determineBatchStatus($batch);
-            $this->updateBatchRecord($batchId, $batch, $status);
+            ParcelFetchBatch::updateOrCreate(
+                ['batch_id' => $batchId],
+                [
+                    'processed_jobs' => $batch->processedJobs(),
+                    'failed_jobs' => $batch->failedJobs,
+                    'status' => $status,
+                    'finished_at' => $batch->finishedAt ? now() : null
+                ]
+            );
 
             return response()->json([
                 'id' => $batch->id,
@@ -95,7 +139,7 @@ class ParcelFetchController extends Controller
                 'pendingJobs' => $batch->pendingJobs,
                 'failedJobs' => $batch->failedJobs,
                 'processedJobs' => $batch->processedJobs(),
-                'progress' => $batch->progress(),
+                'progress' => $progress,
                 'status' => $status,
             ]);
 
@@ -104,7 +148,6 @@ class ParcelFetchController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-
     public function stopFetching($batchId)
     {
         try {

@@ -50,10 +50,8 @@ class FetchParcelDataJob implements ShouldQueue
 
             if ($response->successful()) {
                 $this->processResponse($response->json());
-
-                // ✅ Manually increment processed_jobs in the DB
-                \App\Models\ParcelFetchBatch::where('batch_id', $this->batchId)
-                    ->increment('processed_jobs');
+                // REMOVED: The manual increment below
+                // \App\Models\ParcelFetchBatch::where('batch_id', $this->batchId)->increment('processed_jobs');
             } elseif ($response->status() === 404) {
                 Log::warning("Parcel not found", [
                     'tax_account' => $this->taxAccountNumber,
