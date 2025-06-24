@@ -35,8 +35,18 @@ class FetchParcelDataJob implements ShouldQueue
 
     public function handle(): void
     {
+        // Check if batch was cancelled
         if ($this->batch() && $this->batch()->cancelled()) {
             Log::info('Job cancelled - batch cancelled', [
+                'tax_account' => $this->taxAccountNumber,
+                'property_id' => $this->propertyId
+            ]);
+            return;
+        }
+
+        // Skip if tax account number already exists in parcels table
+        if (Parcel::where('gpin', $this->taxAccountNumber)->exists()) {
+            Log::info('Skipping fetch - tax account already exists in parcels', [
                 'tax_account' => $this->taxAccountNumber,
                 'property_id' => $this->propertyId
             ]);
@@ -46,25 +56,32 @@ class FetchParcelDataJob implements ShouldQueue
         $startTime = microtime(true);
 
         try {
+            // Make API request to fetch parcel data
             $response = $this->makeApiRequest();
 
             if ($response->successful()) {
+                // Process successful response
                 $this->processResponse($response->json());
-                // REMOVED: The manual increment below
-                // \App\Models\ParcelFetchBatch::where('batch_id', $this->batchId)->increment('processed_jobs');
+
             } elseif ($response->status() === 404) {
-                Log::warning("Parcel not found", [
+                // Handle not found response
+                Log::warning("Parcel not found in API", [
                     'tax_account' => $this->taxAccountNumber,
                     'property_id' => $this->propertyId
                 ]);
+
             } else {
+                // Handle other API errors
                 $this->handleApiError($response);
             }
 
         } catch (\Throwable $e) {
+            // Handle exceptions
             $this->handleJobFailure($e);
             throw $e;
+
         } finally {
+            // Log completion
             Log::info('Job processing completed', [
                 'tax_account' => $this->taxAccountNumber,
                 'property_id' => $this->propertyId,
