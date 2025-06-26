@@ -78,34 +78,6 @@ class ParcelFetchController extends Controller
         }
     }
 
-//    public function checkProgress($batchId)
-//    {
-//        try {
-//            $batch = Bus::findBatch($batchId);
-//            if (!$batch) {
-//                return response()->json(['error' => 'Batch not found'], 404);
-//            }
-//
-//            $status = $this->determineBatchStatus($batch);
-//            $this->updateBatchRecord($batchId, $batch, $status);
-//
-//            return response()->json([
-//                'id' => $batch->id,
-//                'totalJobs' => $batch->totalJobs,
-//                'pendingJobs' => $batch->pendingJobs,
-//                'failedJobs' => $batch->failedJobs,
-//                'processedJobs' => $batch->processedJobs(),
-//                'progress' => $batch->progress(),
-//                'status' => $status,
-//            ]);
-//
-//        } catch (\Exception $e) {
-//            Log::error("Progress check failed: " . $e->getMessage());
-//            return response()->json(['error' => $e->getMessage()], 500);
-//        }
-//    }
-
-
     public function checkProgress($batchId)
     {
         try {
