@@ -33,59 +33,34 @@ class ImportNorfolkProperties extends Command
 
             $this->info(sprintf('Processing batch of %d properties (offset %d)...', count($properties), $offset));
 
-//            foreach ($properties as $property) {
-//                try {
-//                    $exists = Property::where('tax_account_number', $property['tax_account_number'])
-//                        ->where('gpin', $property['gpin'])
-//                        ->exists();
-//
-//                    if (!$exists) {
-//                        Property::create([
-//                            'tax_account_number' => $property['tax_account_number'],
-//                            'gpin' => $property['gpin'],
-//                            'full_address' => $property['full_address']
-//                        ]);
-//                        $created++;
-//                    } else {
-//                        $skipped++;
-//                    }
-//                } catch (\Exception $e) {
-//                    $failed++;
-//                    Log::error('Failed to create property', [
-//                        'error' => $e->getMessage(),
-//                        'property' => $property
-//                    ]);
-//                }
-//            }
             foreach ($properties as $property) {
                 try {
-                    // Skip if tax_account_number is missing
-                    if (empty($property['tax_account_number'])) {
+                    // Skip if tax_account_number is missing or empty (strict validation)
+                    if (empty($property['tax_account_number'] ?? null)) {
                         $skipped++;
                         Log::warning('Skipping property - missing tax_account_number', [
                             'property' => $property
                         ]);
                         continue;
                     }
-
-                    // SAFELY get GPIN (key change to fix your error)
-                    $gpin = $property['gpin'] ?? null; // This fixes the "Undefined array key" error
+                    // Normalize property data with default values
+                    $propertyData = [
+                        'tax_account_number' => (string)$property['tax_account_number'], // Ensure non-null string
+                        'gpin' => $property['gpin'] ?? null, // Explicitly handle missing gpin
+                        'full_address' => $property['full_address'] ?? null // Handle missing address
+                    ];
 
                     // Check for existing property (NULL-safe comparison)
-                    $exists = Property::where('tax_account_number', $property['tax_account_number'])
-                        ->when(!is_null($gpin), function ($query) use ($gpin) {
-                            return $query->where('gpin', $gpin);
+                    $exists = Property::where('tax_account_number', $propertyData['tax_account_number'])
+                        ->when(!is_null($propertyData['gpin']), function ($query) use ($propertyData) {
+                            return $query->where('gpin', $propertyData['gpin']);
                         }, function ($query) {
-                            return $query->whereNull('gpin'); // Match NULL GPINs
+                            return $query->whereNull('gpin');
                         })
                         ->exists();
 
                     if (!$exists) {
-                        Property::create([
-                            'tax_account_number' => $property['tax_account_number'],
-                            'gpin' => $gpin, // Can be NULL now
-                            'full_address' => $property['full_address'] ?? null
-                        ]);
+                        Property::create($propertyData);
                         $created++;
                     } else {
                         $skipped++;
