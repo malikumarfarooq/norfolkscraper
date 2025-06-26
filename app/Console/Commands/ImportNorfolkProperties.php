@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\Property;
 use App\Services\NorfolkApiService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 class ImportNorfolkProperties extends Command
 {
@@ -15,86 +14,32 @@ class ImportNorfolkProperties extends Command
     public function handle(NorfolkApiService $apiService): int
     {
         $this->info('Starting property import...');
-        Log::info('Starting property import');
 
         $offset = 0;
-        $batchSize = 500; // Should match NorfolkApiService batch size
-        $created = 0;
-        $skipped = 0;
-        $failed = 0;
+        $batchSize = 500;
+        $imported = 0;
 
         while (true) {
-            $properties = $apiService->fetchBatch($offset);
+            $properties = $apiService->fetchBatch($offset, $batchSize);
 
             if (empty($properties)) {
-                $this->info('No more properties to fetch.');
                 break;
             }
-
-            $this->info(sprintf('Processing batch of %d properties (offset %d)...', count($properties), $offset));
 
             foreach ($properties as $property) {
-                try {
-                    // Skip if tax_account_number is missing or empty (strict validation)
-                    if (empty($property['tax_account_number'] ?? null)) {
-                        $skipped++;
-                        Log::warning('Skipping property - missing tax_account_number', [
-                            'property' => $property
-                        ]);
-                        continue;
-                    }
-                    // Normalize property data with default values
-                    $propertyData = [
-                        'tax_account_number' => (string)$property['tax_account_number'], // Ensure non-null string
-                        'gpin' => $property['gpin'] ?? null, // Explicitly handle missing gpin
-                        'full_address' => $property['full_address'] ?? null // Handle missing address
-                    ];
-
-                    // Check for existing property (NULL-safe comparison)
-                    $exists = Property::where('tax_account_number', $propertyData['tax_account_number'])
-                        ->when(!is_null($propertyData['gpin']), function ($query) use ($propertyData) {
-                            return $query->where('gpin', $propertyData['gpin']);
-                        }, function ($query) {
-                            return $query->whereNull('gpin');
-                        })
-                        ->exists();
-
-                    if (!$exists) {
-                        Property::create($propertyData);
-                        $created++;
-                    } else {
-                        $skipped++;
-                    }
-                } catch (\Exception $e) {
-                    $failed++;
-                    Log::error('Failed to create property', [
-                        'error' => $e->getMessage(),
-                        'property' => $property
-                    ]);
-                }
+                Property::create([
+                    'tax_account_number' => $property['tax_account_number'] ?? null,
+                    'gpin' => $property['gpin'] ?? null,
+                    'full_address' => $property['full_address'] ?? null,
+                ]);
+                $imported++;
             }
+
             $offset += $batchSize;
-
-            // Stop if last batch is smaller than batch size (means no more data)
-            if (count($properties) < $batchSize) {
-                $this->info('Last batch processed, no more data.');
-                break;
-            }
+            $this->info("Imported {$imported} properties so far...");
         }
 
-        $this->info(sprintf(
-            'Import completed: %d created, %d skipped, %d failed',
-            $created,
-            $skipped,
-            $failed
-        ));
-
-        Log::info('Import completed', [
-            'created' => $created,
-            'skipped' => $skipped,
-            'failed' => $failed
-        ]);
-
+        $this->info("Import completed. Total imported: {$imported}");
         return 0;
     }
 }
