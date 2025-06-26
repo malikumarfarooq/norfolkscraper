@@ -35,7 +35,14 @@ class NorfolkApiService
                     ]);
 
                 if ($response->successful()) {
-                    return $response->json() ?? [];
+                    return array_map(function ($item) {
+                        // Normalize data structure with default values
+                        return [
+                            'tax_account_number' => $item['tax_account_number'] ?? null,
+                            'gpin' => $item['gpin'] ?? null,
+                            'full_address' => $item['full_address'] ?? null
+                        ];
+                    }, $response->json() ?? []);
                 }
 
                 Log::warning('API request failed', [
