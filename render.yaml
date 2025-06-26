@@ -1,3 +1,4 @@
+# render.yaml
 services:
   - type: web
     name: norfolkscraper
@@ -6,11 +7,9 @@ services:
       composer install --optimize-autoloader --no-dev
       php artisan key:generate
       php artisan storage:link
-      php artisan queue:table
-      php artisan migrate --force
       php artisan optimize
-      npm install && npm run build
     startCommand: php artisan serve --host=0.0.0.0 --port=8080
+    env: php
     envVars:
       - key: APP_ENV
         value: production
@@ -20,75 +19,6 @@ services:
         generateValue: true
       - key: APP_URL
         value: https://your-app-name.onrender.com
-      - key: QUEUE_CONNECTION
-        value: database
-      - key: SESSION_DRIVER
-        value: database
-      - key: CACHE_STORE
-        value: database
-      - key: DB_CONNECTION
-        value: mysql
-      - key: DB_HOST
-        fromDatabase:
-          name: your-db-name
-          property: host
-      - key: DB_PORT
-        value: 3306
-      - key: DB_DATABASE
-        fromDatabase:
-          name: your-db-name
-          property: name
-      - key: DB_USERNAME
-        fromDatabase:
-          name: your-db-name
-          property: user
-      - key: DB_PASSWORD
-        fromDatabase:
-          name: your-db-name
-          property: password
-    database:
-      name: your-db-name
-      plan: free
-
-  - type: worker
-    name: parcel-queue-worker
-    runtime: php
-    buildCommand: |
-      composer install --optimize-autoloader --no-dev
-      php artisan optimize
-    startCommand: |
-      php artisan queue:work parcels \
-      --tries=3 \
-      --timeout=300 \
-      --sleep=3 \
-      --max-jobs=500 \
-      --max-time=3600 \
-      --rest=5
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: APP_DEBUG
-        value: false
-      - key: APP_KEY
-        syncValue: true
-      - key: APP_URL
-        value: https://your-app-name.onrender.com
-      - key: QUEUE_CONNECTION
-        value: database
-      - key: LOG_CHANNEL
-        value: stderr
-      - key: DB_CONNECTION
-        value: mysql
-      - key: DB_HOST
-        syncValue: true
-      - key: DB_PORT
-        value: 3306
-      - key: DB_DATABASE
-        syncValue: true
-      - key: DB_USERNAME
-        syncValue: true
-      - key: DB_PASSWORD
-        syncValue: true
     database:
       name: your-db-name
       plan: free
