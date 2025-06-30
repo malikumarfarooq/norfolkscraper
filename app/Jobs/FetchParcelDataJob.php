@@ -91,6 +91,9 @@ class FetchParcelDataJob implements ShouldQueue
     }
     protected function makeApiRequest()
     {
+        // Recommended balanced delay (0.25s)
+        usleep(250000); // 250ms delay
+
         $url = "https://air.norfolk.gov/api/v1/recordcard/{$this->taxAccountNumber}";
 
         return Http::withHeaders([
@@ -100,6 +103,8 @@ class FetchParcelDataJob implements ShouldQueue
         ])
             ->timeout(60)
             ->retry(3, 5000, function($exception) {
+                // Add extra delay on retries
+                usleep(500000); // 0.5s delay for retries
                 Log::warning('API request failed, retrying...', [
                     'tax_account' => $this->taxAccountNumber,
                     'error' => $exception->getMessage()
