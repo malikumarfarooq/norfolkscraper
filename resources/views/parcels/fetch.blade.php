@@ -131,6 +131,8 @@
     </style>
 @endpush
 
+
+
 @push('scripts')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
@@ -166,14 +168,16 @@
 
             function startBatchProcessing(e) {
                 e.preventDefault();
-                // Reset UI
                 resetProgressUI();
                 showLoadingState(true);
 
                 $.ajax({
                     url: '{{ route("parcels.fetch.start") }}',
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json'
+                    },
                     success: handleStartSuccess,
                     error: handleStartError,
                     complete: () => showLoadingState(false)
@@ -186,7 +190,7 @@
                     return;
                 }
 
-                if (!confirm('Are you sure you want to stop the current scraping process?')) {
+                if (!confirm('Are you sure you want to stop the current process?')) {
                     return;
                 }
 
@@ -195,35 +199,151 @@
                 $.ajax({
                     url: `/parcels/fetch/stop/${batchId}`,
                     method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                        'Accept': 'application/json'
-                    },
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     success: function(response) {
                         if (response.success) {
-                            alert('Scraping process stopped successfully');
-                            $statusText
-                                .removeClass('badge-processing')
-                                .addClass('bg-warning')
-                                .text('Cancelled');
                             clearInterval(progressInterval);
+                            updateStatus('cancelled');
                             $stopBtn.prop('disabled', true);
+                            showAlert('Process stopped successfully', 'success');
                         } else {
-                            alert('Failed to stop scraping: ' + (response.message || 'Unknown error'));
+                            showAlert(response.message || 'Failed to stop process', 'error');
                             resetStopButton();
                         }
                     },
                     error: function(xhr) {
-                        alert('Error stopping scraping: ' + (xhr.responseJSON?.message || xhr.statusText));
+                        showAlert(xhr.responseJSON?.message || xhr.statusText, 'error');
                         resetStopButton();
                     }
                 });
             }
 
-            function resetStopButton() {
-                $stopBtn.prop('disabled', false).html('<i class="fas fa-stop-circle me-2"></i> Stop Scraping');
+            function checkProgress() {
+                if (!batchId) return;
+
+                $.get(`/parcels/fetch/progress/${batchId}`)
+                    .done(function(response) {
+                        if (response && response.success) {
+                            // Update to use the new response structure
+                            updateProgressUI({
+                                progress: response.progress,
+                                processedJobs: response.processedJobs,
+                                totalJobs: response.totalJobs,
+                                status: response.status,
+                                failedJobs: response.failedJobs
+                            });
+                        } else {
+                            console.error('Invalid progress response:', response);
+                            showAlert('Invalid progress response', 'error');
+                        }
+                    })
+                    .fail(function(xhr) {
+                        console.error('Progress check failed:', xhr);
+                        let errorMessage = xhr.statusText;
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMessage = xhr.responseJSON.message;
+                        }
+                        showAlert('Failed to check progress: ' + errorMessage, 'error');
+                    });
             }
 
+            function updateProgressUI({ progress, processedJobs, totalJobs, status, failedJobs }) {
+                const safeProgress = Math.min(100, Math.max(0, progress || 0));
+                $progressBar.css('width', safeProgress + '%');
+                $progressPercent.text(safeProgress + '%');
+
+                $processedJobs.text(processedJobs || 0);
+                $totalJobs.text(totalJobs || 0);
+
+                updateStatus(status || 'pending', failedJobs || 0);
+
+                if (status === 'processing') {
+                    updateTimeEstimate(processedJobs, totalJobs);
+                }
+
+                if (safeProgress === 100 || ['completed', 'completed_with_errors', 'failed', 'cancelled'].includes(status)) {
+                    clearInterval(progressInterval);
+                    $progressBar.removeClass('progress-bar-animated');
+                    $stopBtn.prop('disabled', true);
+
+                    if (failedJobs > 0) {
+                        showAlert(`Completed with ${failedJobs} failed jobs`, 'warning');
+                    }
+                }
+            }
+
+
+            function updateStatus(status, failedJobs = 0) {
+                const statusMap = {
+                    'processing': { class: 'bg-info', text: 'Processing' },
+                    'completed': { class: 'bg-success', text: 'Completed' },
+                    'completed_with_errors': { class: 'bg-warning', text: 'Completed with errors' },
+                    'failed': { class: 'bg-danger', text: 'Failed' },
+                    'cancelled': { class: 'bg-secondary', text: 'Cancelled' },
+                    'pending': { class: 'bg-secondary', text: 'Pending' }
+                };
+
+                const statusInfo = statusMap[status.toLowerCase()] || statusMap['pending'];
+
+                $statusText
+                    .removeClass()
+                    .addClass('badge ' + statusInfo.class)
+                    .text(statusInfo.text);
+            }
+
+
+            function updateTimeEstimate(processed, total) {
+                if (processed <= 0 || !startTime) {
+                    $timeRemaining.text('calculating...');
+                    return;
+                }
+
+                const now = new Date();
+                const elapsed = (now - startTime) / 1000; // in seconds
+                const rate = processed / elapsed;
+                const remaining = Math.max(0, Math.round((total - processed) / rate));
+
+                // Format as HH:MM:SS
+                const hours = Math.floor(remaining / 3600);
+                const minutes = Math.floor((remaining % 3600) / 60);
+                const seconds = Math.floor(remaining % 60);
+
+                $timeRemaining.text(
+                    `${hours.toString().padStart(2, '0')}:` +
+                    `${minutes.toString().padStart(2, '0')}:` +
+                    `${seconds.toString().padStart(2, '0')}`
+                );
+            }
+
+            function handleStartSuccess(response) {
+                if (!response.batch_id) {
+                    showAlert('Failed to start - no batch ID returned', 'error');
+                    return;
+                }
+
+                batchId = response.batch_id;
+                startTime = new Date();
+
+                // Enable stop button and show progress
+                $stopBtn.prop('disabled', false);
+                $progressSection.removeClass('d-none').hide().fadeIn(300);
+
+                // Initialize counters
+                $processedJobs.text('0');
+                $totalJobs.text(response.total_jobs || response.total_accounts);
+                updateStatus('pending');
+
+                // Start progress polling
+                progressInterval = setInterval(checkProgress, 2000);
+                showAlert('Processing started successfully', 'success');
+            }
+
+            function handleStartError(xhr) {
+                const error = xhr.responseJSON?.message || xhr.statusText;
+                showAlert(`Error starting process: ${error}`, 'error');
+            }
+
+            // Helper functions
             function resetProgressUI() {
                 $progressBar
                     .css('width', '0%')
@@ -232,12 +352,13 @@
 
                 $progressPercent.text('0%');
                 $statusText
-                    .removeClass('bg-success bg-danger bg-warning')
-                    .addClass('bg-secondary')
+                    .removeClass()
+                    .addClass('badge bg-secondary')
                     .text('Pending');
 
                 $batchErrors.addClass('d-none');
                 $errorList.empty();
+                $timeRemaining.text('calculating...');
             }
 
             function showLoadingState(show) {
@@ -246,139 +367,26 @@
                 $startSpinner.toggleClass('d-none', !show);
             }
 
-            function handleStartSuccess(response) {
-                if (!response.batch_id) {
-                    alert("Failed to start batch - no batch ID returned");
-                    return;
-                }
-
-                batchId = response.batch_id;
-                startTime = new Date();
-
-                // Enable the stop button
-                $stopBtn.prop('disabled', false);
-
-                // Initialize progress display
-                $progressSection.removeClass('d-none').hide().fadeIn(300);
-                $processedJobs.text('0');
-                $totalJobs.text(response.total_accounts);
-                $statusText
-                    .removeClass('bg-secondary')
-                    .addClass('badge-processing')
-                    .text('Processing');
-
-                // Start progress polling
-                progressInterval = setInterval(checkProgress, 2000);
+            function resetStopButton() {
+                $stopBtn.prop('disabled', false).html('<i class="fas fa-stop-circle me-2"></i> Stop Scraping');
             }
 
-            function handleStartError(xhr) {
-                const error = xhr.responseJSON?.message || xhr.statusText;
-                alert(`Error starting fetch: ${error}`);
-            }
+            function showAlert(message, type = 'info') {
+                const alertClass = {
+                    'success': 'alert-success',
+                    'error': 'alert-danger',
+                    'warning': 'alert-warning',
+                    'info': 'alert-info'
+                }[type] || 'alert-info';
 
-            function checkProgress() {
-                if (!batchId) return;
+                const $alert = $(`
+                    <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                        ${message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `).prependTo('.card-body');
 
-                $.get(`/parcels/fetch/progress/${batchId}`)
-                    .done(updateProgress)
-                    .fail(handleProgressError);
-            }
-
-            function updateProgress(response) {
-                // Ensure we have valid numbers
-                const processed = parseInt(response.processedJobs) || 0;
-                const total = parseInt(response.totalJobs) || 1;
-                const progress = response.progress || Math.min(100, Math.round((processed / total) * 100));
-
-                // Update progress bar
-                $progressBar.css('width', progress + '%');
-                $progressPercent.text(progress + '%');
-
-                // Update counts
-                $processedJobs.text(processed);
-                $totalJobs.text(total);
-
-                // Update status
-                updateStatus(response.status, response.failedJobs);
-
-                // Update time estimate
-                updateTimeEstimate(processed, total);
-
-                // Handle completion
-                if (progress === 100 || ['completed', 'failed', 'cancelled'].includes(response.status)) {
-                    clearInterval(progressInterval);
-                    $progressBar.removeClass('progress-bar-animated');
-                    $stopBtn.prop('disabled', true);
-
-                    if (response.failedJobs > 0) {
-                        fetchBatchErrors();
-                    }
-                }
-            }
-
-            function updateStatus(status, failedJobs) {
-                const statusMap = {
-                    'processing': { class: 'badge-processing', text: 'Processing' },
-                    'completed': { class: 'bg-success', text: 'Completed' + (failedJobs ? ' with errors' : '') },
-                    'failed': { class: 'bg-danger', text: 'Failed' },
-                    'cancelled': { class: 'bg-warning', text: 'Cancelled' }
-                };
-
-                const statusInfo = statusMap[status] || statusMap['processing'];
-                $statusText
-                    .removeClass('bg-secondary badge-processing bg-success bg-danger bg-warning')
-                    .addClass(statusInfo.class)
-                    .text(statusInfo.text);
-            }
-
-            function updateTimeEstimate(processed, total) {
-                if (processed <= 0) {
-                    $timeRemaining.text('calculating...');
-                    return;
-                }
-
-                const elapsed = (new Date() - startTime) / 1000;
-                const rate = processed / elapsed;
-                const remaining = Math.max(0, Math.round((total - processed) / rate));
-
-                $timeRemaining.text(formatTime(remaining));
-            }
-
-            function formatTime(seconds) {
-                const hours = Math.floor(seconds / 3600);
-                const minutes = Math.floor((seconds % 3600) / 60);
-                const secs = Math.floor(seconds % 60);
-
-                return [
-                    hours > 0 ? `${hours}h ` : '',
-                    minutes > 0 ? `${minutes}m ` : '',
-                    `${secs}s`
-                ].join('').trim() || 'less than a second';
-            }
-
-            function handleProgressError(xhr) {
-                clearInterval(progressInterval);
-                $statusText
-                    .removeClass('bg-secondary badge-processing bg-success')
-                    .addClass('bg-danger')
-                    .text('Error checking progress');
-            }
-
-            function fetchBatchErrors() {
-                $.get(`/parcels/fetch/errors/${batchId}`)
-                    .done(displayErrors)
-                    .fail(() => console.error('Failed to fetch errors'));
-            }
-
-            function displayErrors(errors) {
-                if (errors.length === 0) return;
-
-                $errorList.append(
-                    errors.map(error =>
-                        `<div class="mb-1">${error.property_id}: ${error.message}</div>`
-                    )
-                );
-                $batchErrors.removeClass('d-none');
+                setTimeout(() => $alert.alert('close'), 5000);
             }
         });
     </script>

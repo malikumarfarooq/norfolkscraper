@@ -19,7 +19,6 @@ class ParcelFetchController extends Controller
         $lastBatch = ParcelFetchBatch::latest()->first();
         return view('parcels.fetch', ['lastBatch' => $lastBatch]);
     }
-
     public function startFetching(Request $request)
     {
         $request->validate([
@@ -28,6 +27,8 @@ class ParcelFetchController extends Controller
 
         try {
             $chunkSize = $request->input('chunk_size', 200);
+            $bulkSize = 25;
+
             $query = Property::whereNotNull('tax_account_number');
             $totalAccounts = $query->count();
 
@@ -35,42 +36,54 @@ class ParcelFetchController extends Controller
                 throw new \Exception('No properties with tax account numbers found');
             }
 
-            $batch = Bus::batch([])
-                ->name('Parcel Fetch - ' . now()->format('Y-m-d H:i'))
+            // ✅ First: Prepare the jobs
+            $jobs = [];
+            $currentGroup = [];
+
+            $query->orderBy('id')
+                ->chunk($chunkSize, function ($properties) use (&$jobs, &$currentGroup, $bulkSize) {
+                    foreach ($properties as $property) {
+                        $currentGroup[] = [
+                            'tax_account_number' => $property->tax_account_number,
+                            'property_id' => $property->id,
+                        ];
+
+                        if (count($currentGroup) >= $bulkSize) {
+                            $jobs[] = new \App\Jobs\BulkFetchParcelDataJob($currentGroup);
+                            $currentGroup = [];
+                        }
+                    }
+                });
+
+            if (!empty($currentGroup)) {
+                $jobs[] = new \App\Jobs\BulkFetchParcelDataJob($currentGroup);
+            }
+
+            // ✅ Now dispatch the batch WITH jobs
+            $batch = Bus::batch($jobs)
+                ->name('Parcel Bulk Fetch - ' . now()->format('Y-m-d H:i'))
                 ->allowFailures()
                 ->onQueue('parcels')
                 ->dispatch();
 
+            // ✅ Save batch info AFTER dispatch
             ParcelFetchBatch::create([
                 'batch_id' => $batch->id,
-                'total_jobs' => $totalAccounts,
+                'total_jobs' => $batch->totalJobs,
                 'status' => 'pending',
                 'started_at' => now()
             ]);
-
-            $query->orderBy('id')
-                ->chunkById($chunkSize, function($properties) use ($batch) {
-                    $jobs = $properties->map(function($property) use ($batch) {
-                        $job = new FetchParcelDataJob(
-                            (string)$property->tax_account_number,
-                            $property->id,
-                            $batch->id
-                        );
-                        $job->onQueue('parcels');
-                        return $job;
-                    });
-                    $batch->add($jobs);
-                });
 
             return response()->json([
                 'success' => true,
                 'batch_id' => $batch->id,
                 'total_accounts' => $totalAccounts,
-                'message' => 'Batch processing started'
+                'total_jobs' => $batch->totalJobs,
+                'message' => 'Bulk batch processing started'
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to start batch: ' . $e->getMessage());
+            Log::error('Failed to start bulk batch: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
@@ -78,48 +91,74 @@ class ParcelFetchController extends Controller
         }
     }
 
+
     public function checkProgress($batchId)
     {
         try {
             $batch = Bus::findBatch($batchId);
 
             if (!$batch) {
-                return response()->json(['error' => 'Batch not found'], 404);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Batch not found'
+                ], 404);
             }
 
-            // Calculate accurate progress
-            $progress = 0;
-            if ($batch->totalJobs > 0) {
-                $progress = (int) round(($batch->processedJobs() / $batch->totalJobs) * 100);
-            }
+            // Calculate accurate progress percentage
+            $progress = ($batch->totalJobs > 0)
+                ? (int) round(($batch->processedJobs() / $batch->totalJobs) * 100)
+                : 0;
 
-            // Update batch record
+            // Update batch record in database
             $status = $this->determineBatchStatus($batch);
-            ParcelFetchBatch::updateOrCreate(
-                ['batch_id' => $batchId],
-                [
-                    'processed_jobs' => $batch->processedJobs(),
-                    'failed_jobs' => $batch->failedJobs,
-                    'status' => $status,
-                    'finished_at' => $batch->finishedAt ? now() : null
-                ]
-            );
+            $this->updateBatchRecord($batchId, $batch, $status);
 
             return response()->json([
-                'id' => $batch->id,
-                'totalJobs' => $batch->totalJobs,
-                'pendingJobs' => $batch->pendingJobs,
-                'failedJobs' => $batch->failedJobs,
-                'processedJobs' => $batch->processedJobs(),
+                'success' => true,
                 'progress' => $progress,
+                'processedJobs' => $batch->processedJobs(),
+                'totalJobs' => $batch->totalJobs,
                 'status' => $status,
+                'failedJobs' => $batch->failedJobs,
             ]);
 
         } catch (\Exception $e) {
-            Log::error("Progress check failed: " . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error("Progress check failed for batch {$batchId}: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to check progress',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
+
+
+    protected function determineBatchStatus($batch): string
+    {
+        if ($batch->cancelled()) {
+            return 'cancelled';
+        }
+
+        if ($batch->finished()) {
+            return ($batch->failedJobs > 0) ? 'completed_with_errors' : 'completed';
+        }
+
+        return 'processing';
+    }
+    protected function updateBatchRecord($batchId, $batch, $status): void
+    {
+        ParcelFetchBatch::updateOrCreate(
+            ['batch_id' => $batchId],
+            [
+                'processed_jobs' => $batch->processedJobs(),
+                'failed_jobs' => $batch->failedJobs,
+                'status' => $status,
+                'finished_at' => $batch->finishedAt ? now() : null
+            ]
+        );
+    }
+
+
     public function stopFetching($batchId)
     {
         try {
@@ -160,6 +199,8 @@ class ParcelFetchController extends Controller
             ], 500);
         }
     }
+
+
 
     public function exportCsv(): StreamedResponse
     {
@@ -207,25 +248,6 @@ class ParcelFetchController extends Controller
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
-    protected function determineBatchStatus($batch): string
-    {
-        if ($batch->cancelledAt) return 'cancelled';
-        if ($batch->finishedAt) return $batch->failedJobs > 0 ? 'failed' : 'completed';
-        return 'processing';
-    }
-
-    protected function updateBatchRecord($batchId, $batch, $status): void
-    {
-        ParcelFetchBatch::updateOrCreate(
-            ['batch_id' => $batchId],
-            [
-                'processed_jobs' => $batch->processedJobs(),
-                'failed_jobs' => $batch->failedJobs,
-                'status' => $status,
-                'finished_at' => $batch->finishedAt ? now() : null
-            ]
-        );
-    }
 
     protected function getCsvHeaders(): array
     {
