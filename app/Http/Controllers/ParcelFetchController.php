@@ -252,8 +252,13 @@ class ParcelFetchController extends Controller
     protected function getCsvHeaders(): array
     {
         return [
-            'ID', 'Active', 'Property Address', 'Total Value', 'Mailing Address',
-            'First Name', 'Last Name', 'Property Use', 'Building Type', 'Year Built',
+            'ID', 'Active', 'Property Address', 'Total Value',
+//            'Mailing Address',
+            'Mailing Street', 'Mailing City', 'Mailing State', 'Mailing Zip',
+
+            'Last Name', 'First Name',
+
+            'Property Use', 'Building Type', 'Year Built',
             'Stories', 'Bedrooms', 'Full Baths', 'Half Baths', 'Latest Sale Owner',
             'Latest Sale Date', 'Latest Sale Price', 'Latest Assessment Year',
             'Latest Total Value', 'GPIN'
@@ -263,13 +268,20 @@ class ParcelFetchController extends Controller
     protected function formatParcelRow(Parcel $parcel): array
     {
         $ownerName = $parcel->owner_name ? explode(' ', $parcel->owner_name, 2) : [];
-
+        // Parse mailing address into components
+        $mailingParts = $this->parseMailingAddress($parcel->mailing_address);
         return [
             $parcel->id,
             $parcel->active ? 'Yes' : 'No',
             $this->escapeCsv($parcel->property_address),
             $this->formatCurrency($parcel->total_value),
-            $this->escapeCsv($parcel->mailing_address),
+//            $this->escapeCsv($parcel->mailing_address),
+
+            $this->escapeCsv($mailingParts['street']),
+            $this->escapeCsv($mailingParts['city']),
+            $this->escapeCsv($mailingParts['state']),
+            $this->escapeCsv($mailingParts['zip']),
+
             $this->escapeCsv($ownerName[0] ?? ''),
             $this->escapeCsv($ownerName[1] ?? ''),
             $this->escapeCsv($parcel->property_use),
@@ -300,12 +312,84 @@ class ParcelFetchController extends Controller
     protected function escapeCsv(?string $value): string
     {
         if ($value === null) return '';
-        return '"' . str_replace('"', '""', $value) . '"';
+//        return '"' . str_replace('"', '""', $value) . '"';
+        return str_replace('"', '', $value);
     }
 
     protected function formatCurrency($value): string
     {
         if ($value === null) return '';
         return '$' . number_format((float)$value, 2);
+    }
+
+    protected function parseMailingAddress(?string $address): array
+    {
+        $default = [
+            'street' => '',
+            'city' => '',
+            'state' => '',
+            'zip' => ''
+        ];
+
+        if (empty($address)) {
+            return $default;
+        }
+
+        // Remove any double quotes if present
+        $address = trim(str_replace('"', '', $address));
+
+        // Try comma-separated format first (Street, City, State Zip)
+        if (strpos($address, ',') !== false) {
+            $parts = explode(',', $address);
+            $street = trim($parts[0] ?? '');
+            $city = trim($parts[1] ?? '');
+            $stateZip = trim($parts[2] ?? '');
+        }
+        // Handle space-separated format (Street City State Zip)
+        else {
+            // Extract state and zip first
+            if (preg_match('/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address, $matches)) {
+                $state = $matches[1] ?? '';
+                $zip = $matches[2] ?? '';
+                $remaining = trim(str_replace($matches[0], '', $address));
+
+                // Now try to split remaining into street and city
+                // Look for the last space before the street number changes to name
+                if (preg_match('/^(.*?)\s+([^\d]+)$/', $remaining, $cityMatch)) {
+                    $street = trim($cityMatch[1] ?? '');
+                    $city = trim($cityMatch[2] ?? '');
+                } else {
+                    $street = $remaining;
+                    $city = '';
+                }
+
+                return [
+                    'street' => $street,
+                    'city' => $city,
+                    'state' => $state,
+                    'zip' => $zip
+                ];
+            }
+            return $default;
+        }
+
+        // Handle state and zip extraction
+        $state = '';
+        $zip = '';
+        if (!empty($stateZip)) {
+            if (preg_match('/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)/', $stateZip, $matches)) {
+                $state = $matches[1] ?? '';
+                $zip = $matches[2] ?? '';
+            } elseif (preg_match('/([A-Z]{2})/', $stateZip, $matches)) {
+                $state = $matches[1] ?? '';
+            }
+        }
+
+        return [
+            'street' => $street,
+            'city' => $city,
+            'state' => $state,
+            'zip' => $zip
+        ];
     }
 }
