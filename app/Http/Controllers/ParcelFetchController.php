@@ -322,6 +322,78 @@ class ParcelFetchController extends Controller
         return '$' . number_format((float)$value, 2);
     }
 
+//    protected function parseMailingAddress(?string $address): array
+//    {
+//        $default = [
+//            'street' => '',
+//            'city' => '',
+//            'state' => '',
+//            'zip' => ''
+//        ];
+//
+//        if (empty($address)) {
+//            return $default;
+//        }
+//
+//        // Remove any double quotes if present
+//        $address = trim(str_replace('"', '', $address));
+//
+//        // Try comma-separated format first (Street, City, State Zip)
+//        if (strpos($address, ',') !== false) {
+//            $parts = explode(',', $address);
+//            $street = trim($parts[0] ?? '');
+//            $city = trim($parts[1] ?? '');
+//            $stateZip = trim($parts[2] ?? '');
+//        }
+//        // Handle space-separated format (Street City State Zip)
+//        else {
+//            // Extract state and zip first
+//            if (preg_match('/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address, $matches)) {
+//                $state = $matches[1] ?? '';
+//                $zip = $matches[2] ?? '';
+//                $remaining = trim(str_replace($matches[0], '', $address));
+//
+//                // Now try to split remaining into street and city
+//                // Look for the last space before the street number changes to name
+//                if (preg_match('/^(.*?)\s+([^\d]+)$/', $remaining, $cityMatch)) {
+//                    $street = trim($cityMatch[1] ?? '');
+//                    $city = trim($cityMatch[2] ?? '');
+//                } else {
+//                    $street = $remaining;
+//                    $city = '';
+//                }
+//
+//                return [
+//                    'street' => $street,
+//                    'city' => $city,
+//                    'state' => $state,
+//                    'zip' => $zip
+//                ];
+//            }
+//            return $default;
+//        }
+//
+//        // Handle state and zip extraction
+//        $state = '';
+//        $zip = '';
+//        if (!empty($stateZip)) {
+//            if (preg_match('/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)/', $stateZip, $matches)) {
+//                $state = $matches[1] ?? '';
+//                $zip = $matches[2] ?? '';
+//            } elseif (preg_match('/([A-Z]{2})/', $stateZip, $matches)) {
+//                $state = $matches[1] ?? '';
+//            }
+//        }
+//
+//        return [
+//            'street' => $street,
+//            'city' => $city,
+//            'state' => $state,
+//            'zip' => $zip
+//        ];
+//    }
+
+
     protected function parseMailingAddress(?string $address): array
     {
         $default = [
@@ -353,15 +425,11 @@ class ParcelFetchController extends Controller
                 $zip = $matches[2] ?? '';
                 $remaining = trim(str_replace($matches[0], '', $address));
 
-                // Now try to split remaining into street and city
-                // Look for the last space before the street number changes to name
-                if (preg_match('/^(.*?)\s+([^\d]+)$/', $remaining, $cityMatch)) {
-                    $street = trim($cityMatch[1] ?? '');
-                    $city = trim($cityMatch[2] ?? '');
-                } else {
-                    $street = $remaining;
-                    $city = '';
-                }
+                // Now find the city name (should be the last word before state)
+                // Split remaining into street and city
+                $cityParts = explode(' ', $remaining);
+                $city = array_pop($cityParts);
+                $street = implode(' ', $cityParts);
 
                 return [
                     'street' => $street,
