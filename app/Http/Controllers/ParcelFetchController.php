@@ -27,7 +27,7 @@ class ParcelFetchController extends Controller
 
         try {
             $chunkSize = $request->input('chunk_size', 200);
-            $bulkSize = 300;
+            $bulkSize = 250;
 
             $query = Property::whereNotNull('tax_account_number');
             $totalAccounts = $query->count();
