@@ -1,12 +1,15 @@
-services:
+now check it good or not services:
   - type: web
     name: norfolkscraper
     runtime: php
     buildCommand: |
       composer install --optimize-autoloader --no-dev
+      composer dump-autoload -o
       php artisan key:generate
       php artisan storage:link
-      php artisan optimize
+      php artisan config:cache
+      php artisan route:cache
+      php artisan view:cache
     startCommand: php artisan serve --host=0.0.0.0 --port=8080
     env: php
     envVars:
@@ -17,9 +20,11 @@ services:
       - key: APP_KEY
         generateValue: true
       - key: APP_URL
-        value: https://your-app-name.onrender.com
+        value: https://norfolkscraper.onrender.com
+      - key: APP_LOG_LEVEL
+        value: error
     database:
-      name: your-db-name
+      name: norfolkscraper-db
       plan: free
 
   - type: worker
@@ -27,10 +32,12 @@ services:
     runtime: php
     buildCommand: |
       composer install --optimize-autoloader --no-dev
-      php artisan key:generate
+      composer dump-autoload -o
       php artisan storage:link
-      php artisan optimize
-    startCommand: php artisan queue:work --queue=parcels --tries=3 --timeout=300
+      php artisan config:cache
+      php artisan route:cache
+      php artisan view:cache
+    startCommand: php artisan queue:work --queue=parcels --tries=3 --timeout=300 --sleep=3 --memory=128
     env: php
     envVars:
       - key: APP_ENV
@@ -38,6 +45,10 @@ services:
       - key: APP_DEBUG
         value: false
       - key: APP_KEY
-        sync: true  # This makes sure APP_KEY matches the web service
+        sync: true
       - key: APP_URL
-        value: https://your-app-name.onrender.com
+        value: https://norfolkscraper.onrender.com
+      - key: APP_LOG_LEVEL
+        value: error
+      - key: QUEUE_CONNECTION
+        value: database
