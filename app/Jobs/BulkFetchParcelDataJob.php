@@ -41,10 +41,10 @@ class BulkFetchParcelDataJob implements ShouldQueue
         foreach ($this->propertyBatch as $item) {
             $taxAccount = $item['tax_account_number'];
 
-//            if (Parcel::where('gpin', $taxAccount)->exists()) {
-//                Log::info("Skipping duplicate gpin: {$taxAccount}");
-//                continue;
-//            }
+            if (Parcel::where('gpin', $taxAccount)->exists()) {
+                Log::info("Skipping duplicate gpin: {$taxAccount}");
+                continue;
+            }
 
             try {
                 $response = $this->fetchApi($taxAccount);
