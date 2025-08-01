@@ -29,6 +29,8 @@ class Parcel extends Model
         'latest_assessment_year',
         'latest_total_value',
         'gpin',
+        'created_at',
+        'updated_at',
 //        'location'
     ];
 
