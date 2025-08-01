@@ -6,7 +6,6 @@ use App\Models\Parcel;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class ImportParcels extends Command
 {
@@ -29,6 +28,9 @@ class ImportParcels extends Command
             $csvData = File::get($filePath);
             $rows = array_map('str_getcsv', explode("\n", $csvData));
             $header = array_map('trim', array_shift($rows));
+
+            $this->info('CSV header columns: ' . implode(', ', $header));
+            $this->info('Total rows to import: ' . count($rows));
 
             $bar = $this->output->createProgressBar(count($rows));
             $successCount = 0;
@@ -75,7 +77,8 @@ class ImportParcels extends Command
 
                 try {
                     if ($dryRun) {
-                        $this->line("Would import: " . json_encode($data));
+                        // Print each row data during dry run
+                        $this->line("Would import row {$i}: " . json_encode($data));
                         $successCount++;
                     } else {
                         Parcel::create($data);
@@ -87,7 +90,13 @@ class ImportParcels extends Command
                     $errorCount++;
                 }
 
+                // Show progress bar
                 $bar->advance();
+
+                // Optional: print every 1000 rows processed for visibility
+                if ($i > 0 && $i % 1000 === 0) {
+                    $this->info("Processed {$i} rows...");
+                }
             }
 
             $bar->finish();
@@ -96,6 +105,7 @@ class ImportParcels extends Command
             $this->info("✅ Successfully processed: {$successCount} records");
             $this->error("❌ Failed to process: {$errorCount} records");
             $this->info($dryRun ? 'Dry run completed (no data was actually saved)' : 'Import completed!');
+
             return 0;
 
         } catch (\Exception $e) {
