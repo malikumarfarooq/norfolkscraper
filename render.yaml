@@ -1,15 +1,13 @@
-now check it good or not services:
+# render.yaml
+services:
   - type: web
     name: norfolkscraper
     runtime: php
     buildCommand: |
       composer install --optimize-autoloader --no-dev
-      composer dump-autoload -o
       php artisan key:generate
       php artisan storage:link
-      php artisan config:cache
-      php artisan route:cache
-      php artisan view:cache
+      php artisan optimize
     startCommand: php artisan serve --host=0.0.0.0 --port=8080
     env: php
     envVars:
@@ -20,35 +18,7 @@ now check it good or not services:
       - key: APP_KEY
         generateValue: true
       - key: APP_URL
-        value: https://norfolkscraper.onrender.com
-      - key: APP_LOG_LEVEL
-        value: error
+        value: https://your-app-name.onrender.com
     database:
-      name: norfolkscraper-db
+      name: your-db-name
       plan: free
-
-  - type: worker
-    name: laravel-queue-worker
-    runtime: php
-    buildCommand: |
-      composer install --optimize-autoloader --no-dev
-      composer dump-autoload -o
-      php artisan storage:link
-      php artisan config:cache
-      php artisan route:cache
-      php artisan view:cache
-    startCommand: php artisan queue:work --queue=parcels --tries=3 --timeout=300 --sleep=3 --memory=128
-    env: php
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: APP_DEBUG
-        value: false
-      - key: APP_KEY
-        sync: true
-      - key: APP_URL
-        value: https://norfolkscraper.onrender.com
-      - key: APP_LOG_LEVEL
-        value: error
-      - key: QUEUE_CONNECTION
-        value: database
