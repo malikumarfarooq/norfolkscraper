@@ -54,30 +54,88 @@ class ParcelDataSeeder extends Seeder
         Log::info("Completed! Total records imported: {$importedCount}");
     }
 
+
     protected function transformData(array $row)
     {
         return [
             'id' => $row[0],
-            'active' => (bool)$row[1],
-            'property_address' => $row[2],
-            'total_value' => $row[3] ? (float)str_replace([',', '$'], '', $row[3]) : null,
-            'mailing_address' => $row[4],
-            'owner_name' => $row[5],
-            'property_use' => $row[6],
-            'building_type' => $row[7],
-            'year_built' => $row[8] ? (int)$row[8] : null,
-            'stories' => $row[9] ? (float)$row[9] : null,
-            'bedrooms' => $row[10] ? (int)$row[10] : null,
-            'full_baths' => $row[11] ? (int)$row[11] : null,
-            'half_baths' => $row[12] ? (int)$row[12] : null,
-            'latest_sale_owner' => $row[13],
-            'latest_sale_date' => $row[14] ?: null,
-            'latest_sale_price' => $row[15] ? (float)str_replace([',', '$'], '', $row[15]) : null,
-            'latest_assessment_year' => $row[16] ?: null,
-            'latest_total_value' => $row[17] ? (float)str_replace([',', '$'], '', $row[17]) : null,
-            'gpin' => $row[18],
+            'active' => filter_var($row[1], FILTER_VALIDATE_BOOLEAN),
+            'property_address' => $row[2] ?? null,
+            'total_value' => $this->parseMoney($row[3] ?? null),
+            'mailing_address' => $row[4] ?? null,
+            'owner_name' => $row[5] ?? null,
+            'property_use' => $row[6] ?? null,
+            'building_type' => $row[7] ?? null,
+            'year_built' => $this->parseInt($row[8] ?? null),
+            'stories' => $this->parseFloat($row[9] ?? null),
+            'bedrooms' => $this->parseInt($row[10] ?? null),
+            'full_baths' => $this->parseInt($row[11] ?? null),
+            'half_baths' => $this->parseInt($row[12] ?? null),
+            'latest_sale_owner' => $row[13] ?? null,
+            'latest_sale_date' => $this->parseDate($row[14] ?? null),
+            'latest_sale_price' => $this->parseMoney($row[15] ?? null),
+            'latest_assessment_year' => $this->parseDate($row[16] ?? null),
+            'latest_total_value' => $this->parseMoney($row[17] ?? null),
+            'gpin' => $row[18] ?? null,
             'created_at' => $row[19] ?: now(),
             'updated_at' => $row[20] ?: now(),
         ];
     }
+    protected function parseMoney($value)
+    {
+        if (empty($value)) {
+            return null;
+        }
+        return (float) preg_replace('/[^0-9.-]/', '', $value);
+    }
+
+
+    protected function parseInt($value)
+    {
+        return is_numeric($value) ? (int)$value : null;
+    }
+
+    protected function parseFloat($value)
+    {
+        return is_numeric($value) ? (float)$value : null;
+    }
+
+    protected function parseDate($value)
+    {
+        if (empty($value)) return null;
+
+        try {
+            return \Carbon\Carbon::parse($value)->format('Y-m-d');
+        } catch (\Exception $e) {
+            Log::warning("Could not parse date: {$value}");
+            return null;
+        }
+    }
+//
+//    protected function transformData(array $row)
+//    {
+//        return [
+//            'id' => $row[0],
+//            'active' => (bool)$row[1],
+//            'property_address' => $row[2],
+//            'total_value' => $row[3] ? (float)str_replace([',', '$'], '', $row[3]) : null,
+//            'mailing_address' => $row[4],
+//            'owner_name' => $row[5],
+//            'property_use' => $row[6],
+//            'building_type' => $row[7],
+//            'year_built' => $row[8] ? (int)$row[8] : null,
+//            'stories' => $row[9] ? (float)$row[9] : null,
+//            'bedrooms' => $row[10] ? (int)$row[10] : null,
+//            'full_baths' => $row[11] ? (int)$row[11] : null,
+//            'half_baths' => $row[12] ? (int)$row[12] : null,
+//            'latest_sale_owner' => $row[13],
+//            'latest_sale_date' => $row[14] ?: null,
+//            'latest_sale_price' => $row[15] ? (float)str_replace([',', '$'], '', $row[15]) : null,
+//            'latest_assessment_year' => $row[16] ?: null,
+//            'latest_total_value' => $row[17] ? (float)str_replace([',', '$'], '', $row[17]) : null,
+//            'gpin' => $row[18],
+//            'created_at' => $row[19] ?: now(),
+//            'updated_at' => $row[20] ?: now(),
+//        ];
+//    }
 }
