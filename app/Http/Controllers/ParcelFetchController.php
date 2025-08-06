@@ -269,6 +269,8 @@ class ParcelFetchController extends Controller
 //            fclose($file);
 //        }, 200, $this->getCsvResponseHeaders($filename));
 //    }
+
+
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
@@ -277,59 +279,54 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
-            // Use database-agnostic comparison methods
-            $groups = [
-                '0$' => function($query) {
-                    return $query->where(function($q) {
-                        $q->where(function($sub) {
-                            $sub->where('latest_sale_price', '=', 0)
-                                ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 0.00');
-                        })->orWhereNull('latest_sale_price');
-                    });
-                },
-                '1$' => function($query) {
-                    return $query->where(function($q) {
-                        $q->where('latest_sale_price', '=', 1)
-                            ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 1.00');
-                    });
-                },
-                '2$' => function($query) {
-                    return $query->where(function($q) {
-                        $q->where('latest_sale_price', '=', 2)
-                            ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 2.00');
-                    });
-                },
-                'Other' => function($query) {
-                    return $query->whereNotNull('latest_sale_price')
-                        ->where(function($q) {
-                            $q->whereNotIn('latest_sale_price', [0, 1, 2])
-                                ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) NOT IN (0.00, 1.00, 2.00)');
-                        });
-                }
-            ];
+            try {
+                // Process in chunks to avoid memory issues
+                Parcel::chunk(1000, function($parcels) use ($file) {
+                    // Group them in memory for this chunk
+                    $grouped = [
+                        '0$' => [],
+                        '1$' => [],
+                        '2$' => [],
+                        'Other' => []
+                    ];
 
-            foreach ($groups as $group => $condition) {
-                try {
-                    Log::info("Starting export for group: {$group}");
+                    foreach ($parcels as $parcel) {
+                        $price = $parcel->latest_sale_price;
 
-                    $query = Parcel::query();
-                    $condition($query)->chunk(500, function($parcels) use ($file, $group) {
-                        foreach ($parcels as $parcel) {
+                        if (is_null($price)) {
+                            $grouped['0$'][] = $parcel;
+                        } elseif ($price == 0) {
+                            $grouped['0$'][] = $parcel;
+                        } elseif ($price == 1) {
+                            $grouped['1$'][] = $parcel;
+                        } elseif ($price == 2) {
+                            $grouped['2$'][] = $parcel;
+                        } else {
+                            $grouped['Other'][] = $parcel;
+                        }
+                    }
+
+                    // Write this chunk's groups to CSV
+                    foreach ($grouped as $group => $groupParcels) {
+                        foreach ($groupParcels as $parcel) {
                             fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
                         }
-                        flush();
-                    });
+                        flush(); // Flush output buffer
+                    }
+                });
 
-                    Log::info("Completed export for group: {$group}");
-                } catch (\Exception $e) {
-                    Log::error("Error exporting group {$group}: " . $e->getMessage());
-                    throw $e;
-                }
+                fclose($file);
+
+            } catch (\Exception $e) {
+                Log::error("Error during export: " . $e->getMessage());
+                fclose($file);
+                throw $e;
             }
-
-            fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
     }
+
+
+
     protected function getCsvHeaders(): array
     {
         return [
