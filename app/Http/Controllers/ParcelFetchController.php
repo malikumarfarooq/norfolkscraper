@@ -308,7 +308,8 @@ class ParcelFetchController extends Controller
 
             'Property Use', 'Building Type', 'Year Built',
             'Stories', 'Bedrooms', 'Full Baths', 'Half Baths', 'Latest Sale Owner',
-            'Latest Sale Date', 'Latest Sale Price', 'Latest Assessment Year',
+            'Latest Sale Date', 'Latest Sale Price',
+//            'Latest Assessment Year',
             'Latest Total Value', 'GPIN'
         ];
     }
@@ -367,16 +368,15 @@ class ParcelFetchController extends Controller
         return str_replace('"', '', $value);
     }
 
-//    protected function formatCurrency($value): string
-//    {
-//        if ($value === null) return '';
-//        return '$' . number_format((float)$value, 2);
-//    }
-
     protected function formatCurrency($value): string
     {
         if ($value === null || $value === '') {
             return '';
+        }
+
+        // Explicitly check for 0 values
+        if ($value === 0 || $value === '0' || $value === '0.00' || $value === '$0.00') {
+            return '$0.00';
         }
 
         // Handle both string ('$1.00') and numeric (1.00) inputs
