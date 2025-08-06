@@ -279,50 +279,39 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
-            try {
-                // Process in chunks to avoid memory issues
-                Parcel::chunk(1000, function($parcels) use ($file) {
-                    // Group them in memory for this chunk
-                    $grouped = [
-                        '0$' => [],
-                        '1$' => [],
-                        '2$' => [],
-                        'Other' => []
-                    ];
+            // Process in chunks for memory efficiency
+            Parcel::chunk(1000, function($parcels) use ($file) {
+                foreach ($parcels as $parcel) {
+                    $price = $parcel->latest_sale_price;
+                    $group = $this->determineSaleGroup($price);
 
-                    foreach ($parcels as $parcel) {
-                        $price = $parcel->latest_sale_price;
+                    fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+                }
+                flush(); // Ensure output is sent to browser
+            });
 
-                        if (is_null($price)) {
-                            $grouped['0$'][] = $parcel;
-                        } elseif ($price == 0) {
-                            $grouped['0$'][] = $parcel;
-                        } elseif ($price == 1) {
-                            $grouped['1$'][] = $parcel;
-                        } elseif ($price == 2) {
-                            $grouped['2$'][] = $parcel;
-                        } else {
-                            $grouped['Other'][] = $parcel;
-                        }
-                    }
-
-                    // Write this chunk's groups to CSV
-                    foreach ($grouped as $group => $groupParcels) {
-                        foreach ($groupParcels as $parcel) {
-                            fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
-                        }
-                        flush(); // Flush output buffer
-                    }
-                });
-
-                fclose($file);
-
-            } catch (\Exception $e) {
-                Log::error("Error during export: " . $e->getMessage());
-                fclose($file);
-                throw $e;
-            }
+            fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
+    }
+
+    protected function determineSaleGroup($price): string
+    {
+        if ($price === null || $price === '') {
+            return '0$';
+        }
+
+        $numericPrice = (float)$price;
+
+        if (abs($numericPrice) < 0.00001) { // Handles 0, 0.0, '0', etc.
+            return '0$';
+        }
+        if (abs($numericPrice - 1.00) < 0.00001) {
+            return '1$';
+        }
+        if (abs($numericPrice - 2.00) < 0.00001) {
+            return '2$';
+        }
+        return 'Other';
     }
 
 
@@ -450,43 +439,29 @@ class ParcelFetchController extends Controller
 //
 //        return '$' . number_format($numericValue, 2);
 //    }
+
+
+
     protected function formatCurrency($value): string
     {
-        // Handle all null cases
-        if (is_null($value)) {
+        if ($value === null || $value === '') {
             return '';
         }
 
-        // Handle boolean false case
-        if ($value === false) {
+        // Handle various zero representations
+        if ($value === 0 || $value === '0' || $value === '0.00' || $value === 0.00) {
             return '$0.00';
         }
 
-        // Handle empty strings and string "NULL"
-        $valueStr = is_string($value) ? trim($value) : (string)$value;
-        if ($valueStr === '' || strtoupper($valueStr) === 'NULL') {
-            return '';
-        }
-
-        // Handle zero values explicitly
-        if ($value === 0 || $value === '0' || $value === '0.00') {
-            return '$0.00';
-        }
-
-        // Convert to float safely
         try {
-            $numericValue = (float) preg_replace('/[^0-9.-]/', '', $valueStr);
+            $numericValue = (float)$value;
+            return '$' . number_format($numericValue, 2);
         } catch (\Exception $e) {
             return '';
         }
-
-        // Handle very small values that might be considered zero
-        if (abs($numericValue) < 0.00001) {
-            return '$0.00';
-        }
-
-        return '$' . number_format($numericValue, 2);
     }
+
+
     protected function parseMailingAddress(?string $address): array
     {
         $default = [

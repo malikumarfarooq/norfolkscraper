@@ -49,7 +49,7 @@ class Parcel extends Model
     ];
     public function getLatestSalePriceAttribute($value)
     {
-        if (is_null($value)) {
+        if ($value === null || $value === '') {
             return null;
         }
         return (float)$value;
