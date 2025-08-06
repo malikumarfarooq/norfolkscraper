@@ -279,16 +279,44 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
-            // Process in chunks for memory efficiency
-            Parcel::chunk(1000, function($parcels) use ($file) {
-                foreach ($parcels as $parcel) {
-                    $price = $parcel->latest_sale_price;
-                    $group = $this->determineSaleGroup($price);
+            // Define the order of groups
+            $groupOrder = ['0$', '1$', '2$', 'Other'];
 
-                    fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+            // Process each group in order
+            foreach ($groupOrder as $group) {
+                $query = Parcel::query();
+
+                // Apply conditions based on group
+                switch ($group) {
+                    case '0$':
+                        $query->where(function($q) {
+                            $q->where('latest_sale_price', 0)
+                                ->orWhereNull('latest_sale_price');
+                        });
+                        break;
+
+                    case '1$':
+                        $query->where('latest_sale_price', 1.00);
+                        break;
+
+                    case '2$':
+                        $query->where('latest_sale_price', 2.00);
+                        break;
+
+                    case 'Other':
+                        $query->whereNotNull('latest_sale_price')
+                            ->whereNotIn('latest_sale_price', [0, 1.00, 2.00]);
+                        break;
                 }
-                flush(); // Ensure output is sent to browser
-            });
+
+                // Process the group's records
+                $query->chunk(1000, function($parcels) use ($file, $group) {
+                    foreach ($parcels as $parcel) {
+                        fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+                    }
+                    flush(); // Ensure output is sent to browser
+                });
+            }
 
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
