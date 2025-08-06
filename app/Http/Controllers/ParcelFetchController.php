@@ -269,7 +269,6 @@ class ParcelFetchController extends Controller
 //            fclose($file);
 //        }, 200, $this->getCsvResponseHeaders($filename));
 //    }
-
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
@@ -279,28 +278,41 @@ class ParcelFetchController extends Controller
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
             $groups = [
-                // This is where your new code goes - replacing the existing '0$' definition
                 '0$' => function($query) {
                     return $query->where(function($q) {
-                        $q->where('latest_sale_price', '=', 0.00)
+                        $q->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 0.00')
                             ->orWhereNull('latest_sale_price');
                     });
                 },
-                // Keep the other group definitions the same
                 '1$' => function($query) {
-                    return $query->where('latest_sale_price', 1.00);
+                    return $query->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 1.00');
                 },
                 '2$' => function($query) {
-                    return $query->where('latest_sale_price', 2.00);
+                    return $query->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 2.00');
                 },
                 'Other' => function($query) {
                     return $query->whereNotNull('latest_sale_price')
-                        ->whereNotIn('latest_sale_price', [0, 1.00, 2.00]);
+                        ->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) NOT IN (0.00, 1.00, 2.00)');
                 }
             ];
 
             foreach ($groups as $group => $condition) {
-                // Rest of the method remains unchanged...
+                try {
+                    Log::info("Starting export for group: {$group}");
+
+                    $query = Parcel::query();
+                    $condition($query)->chunk(500, function($parcels) use ($file, $group) {
+                        foreach ($parcels as $parcel) {
+                            fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+                        }
+                        flush();
+                    });
+
+                    Log::info("Completed export for group: {$group}");
+                } catch (\Exception $e) {
+                    Log::error("Error exporting group {$group}: " . $e->getMessage());
+                    throw $e;
+                }
             }
 
             fclose($file);
