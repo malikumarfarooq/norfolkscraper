@@ -340,23 +340,57 @@ class ParcelFetchController extends Controller
         return str_replace('"', '', $value);
     }
 
+//    protected function formatCurrency($value): string
+//    {
+//        if ($value === null || $value === '') {
+//            return '';
+//        }
+//
+//        // Explicitly check for 0 values
+//        if ($value === 0 || $value === '0' || $value === '0.00' || $value === '$0.00') {
+//            return '$0.00';
+//        }
+//
+//        // Handle both string ('$1.00') and numeric (1.00) inputs
+//        $numericValue = is_string($value) ? (float) str_replace(['$', ','], '', $value) : (float) $value;
+//
+//        return '$' . number_format($numericValue, 2);
+//    }
     protected function formatCurrency($value): string
     {
-        if ($value === null || $value === '') {
+        // Handle all null/empty cases first
+        if ($value === null || $value === '' || $value === 'NULL') {
             return '';
         }
 
-        // Explicitly check for 0 values
-        if ($value === 0 || $value === '0' || $value === '0.00' || $value === '$0.00') {
+        // Handle all possible zero representations
+        $zeroValues = [0, '0', '0.00', '$0.00', '0.000', '0.0', 0.0];
+        if (in_array($value, $zeroValues, true)) {
             return '$0.00';
         }
 
-        // Handle both string ('$1.00') and numeric (1.00) inputs
-        $numericValue = is_string($value) ? (float) str_replace(['$', ','], '', $value) : (float) $value;
+        // Convert to string if numeric to handle all cases consistently
+        $stringValue = (string)$value;
 
+        // Remove any currency symbols and thousands separators
+        $cleanedValue = str_replace(['$', ','], '', $stringValue);
+
+        // Handle empty string after cleaning
+        if ($cleanedValue === '') {
+            return '';
+        }
+
+        // Convert to float
+        $numericValue = (float)$cleanedValue;
+
+        // Handle zero after conversion
+        if ($numericValue === 0.0) {
+            return '$0.00';
+        }
+
+        // Format the number
         return '$' . number_format($numericValue, 2);
     }
-
     protected function parseMailingAddress(?string $address): array
     {
         $default = [
