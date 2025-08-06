@@ -24,7 +24,7 @@ class ParcelDataSeeder extends Seeder
         // Skip header row
         fgetcsv($file);
 
-        $batchSize = 1000; // Adjust based on your Render memory limits
+        $batchSize = 200; // Adjust based on your Render memory limits
         $batch = [];
         $importedCount = 0;
 

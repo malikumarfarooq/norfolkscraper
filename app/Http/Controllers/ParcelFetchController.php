@@ -220,57 +220,6 @@ class ParcelFetchController extends Controller
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
-//    public function exportBySaleGroups(): StreamedResponse
-//    {
-//        $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
-//
-//        return Response::stream(function() {
-//            $file = fopen('php://output', 'w');
-//            fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
-//
-//            $groups = [
-//                '0$' => function($query) {
-//                    return $query->where(function($q) {
-//                        $q->where('latest_sale_price', 0)
-//                            ->orWhereNull('latest_sale_price');
-//                    });
-//                },
-//                '1$' => function($query) {
-//                    return $query->where('latest_sale_price', 1.00);
-//                },
-//                '2$' => function($query) {
-//                    return $query->where('latest_sale_price', 2.00);
-//                },
-//                'Other' => function($query) {
-//                    return $query->whereNotNull('latest_sale_price')
-//                        ->whereNotIn('latest_sale_price', [0, 1.00, 2.00]);
-//                }
-//            ];
-//
-//            foreach ($groups as $group => $condition) {
-//                try {
-//                    Log::info("Starting export for group: {$group}");
-//
-//                    $query = Parcel::query();
-//                    $condition($query)->chunk(500, function($parcels) use ($file, $group) {
-//                        foreach ($parcels as $parcel) {
-//                            fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
-//                        }
-//                        flush();
-//                    });
-//
-//                    Log::info("Completed export for group: {$group}");
-//                } catch (\Exception $e) {
-//                    Log::error("Error exporting group {$group}: " . $e->getMessage());
-//                    throw $e;
-//                }
-//            }
-//
-//            fclose($file);
-//        }, 200, $this->getCsvResponseHeaders($filename));
-//    }
-
-
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
@@ -388,28 +337,6 @@ class ParcelFetchController extends Controller
     }
 
 
-//    protected function formatCurrency($value): string
-//    {
-//        // Handle null or empty values
-//        if (is_null($value) || trim($value) === '' || strtoupper(trim($value)) === 'NULL') {
-//            return '';
-//        }
-//
-//        // Clean and normalize the value
-//        $stringValue = trim((string) $value);
-//        $cleanedValue = str_replace(['$', ','], '', $stringValue);
-//
-//        // Convert to float safely
-//        $numericValue = (float) $cleanedValue;
-//
-//        // If zero, explicitly return $0.00
-//        if ($numericValue === 0.0) {
-//            return '$0.00';
-//        }
-//
-//        // Otherwise format normally
-//        return '$' . number_format($numericValue, 2);
-//    }
     protected function formatCurrency($value): string
     {
         // Normalize and clean input
