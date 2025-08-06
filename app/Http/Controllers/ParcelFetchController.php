@@ -220,6 +220,34 @@ class ParcelFetchController extends Controller
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
+//    public function exportBySaleGroups(): StreamedResponse
+//    {
+//        $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
+//
+//        return Response::stream(function() {
+//            $file = fopen('php://output', 'w');
+//            fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
+//
+//            $groups = [
+//                '0$' => fn($q) => $q->whereIn('latest_sale_price', ['$0.00', '0'])->orWhereNull('latest_sale_price'),
+//                '1$' => fn($q) => $q->where('latest_sale_price', '$1.00'),
+//                '2$' => fn($q) => $q->where('latest_sale_price', '$2.00'),
+//                'Other' => fn($q) => $q->whereNotNull('latest_sale_price')
+//                    ->whereNotIn('latest_sale_price', ['$0.00', '0', '$1.00', '$2.00'])
+//            ];
+//
+//            foreach ($groups as $group => $condition) {
+//                Parcel::where($condition)->chunk(1000, function($parcels) use ($file, $group) {
+//                    foreach ($parcels as $parcel) {
+//                        fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+//                    }
+//                });
+//            }
+//
+//            fclose($file);
+//        }, 200, $this->getCsvResponseHeaders($filename));
+//    }
+
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
@@ -229,26 +257,46 @@ class ParcelFetchController extends Controller
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
             $groups = [
-                '0$' => fn($q) => $q->whereIn('latest_sale_price', ['$0.00', '0'])->orWhereNull('latest_sale_price'),
-                '1$' => fn($q) => $q->where('latest_sale_price', '$1.00'),
-                '2$' => fn($q) => $q->where('latest_sale_price', '$2.00'),
-                'Other' => fn($q) => $q->whereNotNull('latest_sale_price')
-                    ->whereNotIn('latest_sale_price', ['$0.00', '0', '$1.00', '$2.00'])
+                '0$' => function($query) {
+                    return $query->where(function($q) {
+                        $q->where('latest_sale_price', 0)
+                            ->orWhereNull('latest_sale_price');
+                    });
+                },
+                '1$' => function($query) {
+                    return $query->where('latest_sale_price', 1.00);
+                },
+                '2$' => function($query) {
+                    return $query->where('latest_sale_price', 2.00);
+                },
+                'Other' => function($query) {
+                    return $query->whereNotNull('latest_sale_price')
+                        ->whereNotIn('latest_sale_price', [0, 1.00, 2.00]);
+                }
             ];
 
             foreach ($groups as $group => $condition) {
-                Parcel::where($condition)->chunk(1000, function($parcels) use ($file, $group) {
-                    foreach ($parcels as $parcel) {
-                        fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
-                    }
-                });
+                try {
+                    Log::info("Starting export for group: {$group}");
+
+                    $query = Parcel::query();
+                    $condition($query)->chunk(500, function($parcels) use ($file, $group) {
+                        foreach ($parcels as $parcel) {
+                            fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+                        }
+                        flush();
+                    });
+
+                    Log::info("Completed export for group: {$group}");
+                } catch (\Exception $e) {
+                    Log::error("Error exporting group {$group}: " . $e->getMessage());
+                    throw $e;
+                }
             }
 
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
     }
-
-
     protected function getCsvHeaders(): array
     {
         return [
@@ -267,7 +315,10 @@ class ParcelFetchController extends Controller
 
     protected function formatParcelRow(Parcel $parcel): array
     {
-        $ownerName = $parcel->owner_name ? explode(' ', $parcel->owner_name, 2) : [];
+
+        $ownerName = $parcel->owner_name ? explode(' ', trim(str_replace(',', '', $parcel->owner_name)), 2) : [];
+
+//        $ownerName = $parcel->owner_name ? explode(' ', $parcel->owner_name, 2) : [];
         // Parse mailing address into components
         $mailingParts = $this->parseMailingAddress($parcel->mailing_address);
         return [
@@ -316,10 +367,22 @@ class ParcelFetchController extends Controller
         return str_replace('"', '', $value);
     }
 
+//    protected function formatCurrency($value): string
+//    {
+//        if ($value === null) return '';
+//        return '$' . number_format((float)$value, 2);
+//    }
+
     protected function formatCurrency($value): string
     {
-        if ($value === null) return '';
-        return '$' . number_format((float)$value, 2);
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        // Handle both string ('$1.00') and numeric (1.00) inputs
+        $numericValue = is_string($value) ? (float) str_replace(['$', ','], '', $value) : (float) $value;
+
+        return '$' . number_format($numericValue, 2);
     }
 
     protected function parseMailingAddress(?string $address): array
