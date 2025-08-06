@@ -220,6 +220,56 @@ class ParcelFetchController extends Controller
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
+//    public function exportBySaleGroups(): StreamedResponse
+//    {
+//        $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
+//
+//        return Response::stream(function() {
+//            $file = fopen('php://output', 'w');
+//            fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
+//
+//            $groups = [
+//                '0$' => function($query) {
+//                    return $query->where(function($q) {
+//                        $q->where('latest_sale_price', 0)
+//                            ->orWhereNull('latest_sale_price');
+//                    });
+//                },
+//                '1$' => function($query) {
+//                    return $query->where('latest_sale_price', 1.00);
+//                },
+//                '2$' => function($query) {
+//                    return $query->where('latest_sale_price', 2.00);
+//                },
+//                'Other' => function($query) {
+//                    return $query->whereNotNull('latest_sale_price')
+//                        ->whereNotIn('latest_sale_price', [0, 1.00, 2.00]);
+//                }
+//            ];
+//
+//            foreach ($groups as $group => $condition) {
+//                try {
+//                    Log::info("Starting export for group: {$group}");
+//
+//                    $query = Parcel::query();
+//                    $condition($query)->chunk(500, function($parcels) use ($file, $group) {
+//                        foreach ($parcels as $parcel) {
+//                            fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
+//                        }
+//                        flush();
+//                    });
+//
+//                    Log::info("Completed export for group: {$group}");
+//                } catch (\Exception $e) {
+//                    Log::error("Error exporting group {$group}: " . $e->getMessage());
+//                    throw $e;
+//                }
+//            }
+//
+//            fclose($file);
+//        }, 200, $this->getCsvResponseHeaders($filename));
+//    }
+
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_groups_" . now()->format('Y-m-d_His') . ".csv";
@@ -229,12 +279,14 @@ class ParcelFetchController extends Controller
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
             $groups = [
+                // This is where your new code goes - replacing the existing '0$' definition
                 '0$' => function($query) {
                     return $query->where(function($q) {
-                        $q->where('latest_sale_price', 0)
+                        $q->where('latest_sale_price', '=', 0.00)
                             ->orWhereNull('latest_sale_price');
                     });
                 },
+                // Keep the other group definitions the same
                 '1$' => function($query) {
                     return $query->where('latest_sale_price', 1.00);
                 },
@@ -248,22 +300,7 @@ class ParcelFetchController extends Controller
             ];
 
             foreach ($groups as $group => $condition) {
-                try {
-                    Log::info("Starting export for group: {$group}");
-
-                    $query = Parcel::query();
-                    $condition($query)->chunk(500, function($parcels) use ($file, $group) {
-                        foreach ($parcels as $parcel) {
-                            fputcsv($file, array_merge([$group], $this->formatParcelRow($parcel)));
-                        }
-                        flush();
-                    });
-
-                    Log::info("Completed export for group: {$group}");
-                } catch (\Exception $e) {
-                    Log::error("Error exporting group {$group}: " . $e->getMessage());
-                    throw $e;
-                }
+                // Rest of the method remains unchanged...
             }
 
             fclose($file);
@@ -365,34 +402,65 @@ class ParcelFetchController extends Controller
 //    }
 
 
+//    protected function formatCurrency($value): string
+//    {
+//        // ✅ Normalize: handle null, string "NULL", or empty
+//        if (is_null($value)) {
+//            return '';
+//        }
+//
+//        // Convert to string and clean it
+//        $valueStr = trim((string) $value);
+//
+//        if ($valueStr === '' || strtoupper($valueStr) === 'NULL') {
+//            return '';
+//        }
+//
+//        // Remove $ and commas
+//        $cleaned = str_replace(['$', ','], '', $valueStr);
+//
+//        // Convert to float
+//        $numericValue = (float) $cleaned;
+//
+//        // ✅ Explicit zero check
+//        if (abs($numericValue) < 0.00001) {
+//            return '$0.00';
+//        }
+//
+//        return '$' . number_format($numericValue, 2);
+//    }
     protected function formatCurrency($value): string
     {
-        // ✅ Normalize: handle null, string "NULL", or empty
+        // Handle all null cases
         if (is_null($value)) {
             return '';
         }
 
-        // Convert to string and clean it
-        $valueStr = trim((string) $value);
+        // Handle string representations
+        $valueStr = is_string($value) ? trim($value) : (string)$value;
 
         if ($valueStr === '' || strtoupper($valueStr) === 'NULL') {
             return '';
         }
 
-        // Remove $ and commas
-        $cleaned = str_replace(['$', ','], '', $valueStr);
+        // Remove all non-numeric characters except decimal point
+        $cleaned = preg_replace('/[^0-9.]/', '', $valueStr);
 
-        // Convert to float
-        $numericValue = (float) $cleaned;
+        // Handle empty result after cleaning
+        if ($cleaned === '') {
+            return '';
+        }
 
-        // ✅ Explicit zero check
+        // Convert to float safely
+        $numericValue = (float)$cleaned;
+
+        // Handle very small values that might be considered zero
         if (abs($numericValue) < 0.00001) {
             return '$0.00';
         }
 
         return '$' . number_format($numericValue, 2);
     }
-
     protected function parseMailingAddress(?string $address): array
     {
         $default = [
