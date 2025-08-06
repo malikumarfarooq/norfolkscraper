@@ -341,26 +341,55 @@ class ParcelFetchController extends Controller
     }
 
 
+//    protected function formatCurrency($value): string
+//    {
+//        // Handle null or empty values
+//        if (is_null($value) || trim($value) === '' || strtoupper(trim($value)) === 'NULL') {
+//            return '';
+//        }
+//
+//        // Clean and normalize the value
+//        $stringValue = trim((string) $value);
+//        $cleanedValue = str_replace(['$', ','], '', $stringValue);
+//
+//        // Convert to float safely
+//        $numericValue = (float) $cleanedValue;
+//
+//        // If zero, explicitly return $0.00
+//        if ($numericValue === 0.0) {
+//            return '$0.00';
+//        }
+//
+//        // Otherwise format normally
+//        return '$' . number_format($numericValue, 2);
+//    }
+
+
     protected function formatCurrency($value): string
     {
-        // Handle null or empty values
-        if (is_null($value) || trim($value) === '' || strtoupper(trim($value)) === 'NULL') {
+        // ✅ Normalize: handle null, string "NULL", or empty
+        if (is_null($value)) {
             return '';
         }
 
-        // Clean and normalize the value
-        $stringValue = trim((string) $value);
-        $cleanedValue = str_replace(['$', ','], '', $stringValue);
+        // Convert to string and clean it
+        $valueStr = trim((string) $value);
 
-        // Convert to float safely
-        $numericValue = (float) $cleanedValue;
+        if ($valueStr === '' || strtoupper($valueStr) === 'NULL') {
+            return '';
+        }
 
-        // If zero, explicitly return $0.00
-        if ($numericValue === 0.0) {
+        // Remove $ and commas
+        $cleaned = str_replace(['$', ','], '', $valueStr);
+
+        // Convert to float
+        $numericValue = (float) $cleaned;
+
+        // ✅ Explicit zero check
+        if (abs($numericValue) < 0.00001) {
             return '$0.00';
         }
 
-        // Otherwise format normally
         return '$' . number_format($numericValue, 2);
     }
 
