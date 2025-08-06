@@ -47,4 +47,12 @@ class Parcel extends Model
         'latest_sale_date' => 'date',
         'latest_assessment_year' => 'date',
     ];
+    public function getLatestSalePriceAttribute($value)
+    {
+        if (is_null($value)) {
+            return null;
+        }
+        return (float)$value;
+    }
 }
+

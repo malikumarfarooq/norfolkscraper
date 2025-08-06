@@ -277,22 +277,34 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Group'], $this->getCsvHeaders()));
 
+            // Use database-agnostic comparison methods
             $groups = [
                 '0$' => function($query) {
                     return $query->where(function($q) {
-                        $q->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 0.00')
-                            ->orWhereNull('latest_sale_price');
+                        $q->where(function($sub) {
+                            $sub->where('latest_sale_price', '=', 0)
+                                ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 0.00');
+                        })->orWhereNull('latest_sale_price');
                     });
                 },
                 '1$' => function($query) {
-                    return $query->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 1.00');
+                    return $query->where(function($q) {
+                        $q->where('latest_sale_price', '=', 1)
+                            ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 1.00');
+                    });
                 },
                 '2$' => function($query) {
-                    return $query->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 2.00');
+                    return $query->where(function($q) {
+                        $q->where('latest_sale_price', '=', 2)
+                            ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) = 2.00');
+                    });
                 },
                 'Other' => function($query) {
                     return $query->whereNotNull('latest_sale_price')
-                        ->whereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) NOT IN (0.00, 1.00, 2.00)');
+                        ->where(function($q) {
+                            $q->whereNotIn('latest_sale_price', [0, 1, 2])
+                                ->orWhereRaw('CAST(latest_sale_price AS DECIMAL(10,2)) NOT IN (0.00, 1.00, 2.00)');
+                        });
                 }
             ];
 
@@ -448,23 +460,28 @@ class ParcelFetchController extends Controller
             return '';
         }
 
-        // Handle string representations
-        $valueStr = is_string($value) ? trim($value) : (string)$value;
+        // Handle boolean false case
+        if ($value === false) {
+            return '$0.00';
+        }
 
+        // Handle empty strings and string "NULL"
+        $valueStr = is_string($value) ? trim($value) : (string)$value;
         if ($valueStr === '' || strtoupper($valueStr) === 'NULL') {
             return '';
         }
 
-        // Remove all non-numeric characters except decimal point
-        $cleaned = preg_replace('/[^0-9.]/', '', $valueStr);
-
-        // Handle empty result after cleaning
-        if ($cleaned === '') {
-            return '';
+        // Handle zero values explicitly
+        if ($value === 0 || $value === '0' || $value === '0.00') {
+            return '$0.00';
         }
 
         // Convert to float safely
-        $numericValue = (float)$cleaned;
+        try {
+            $numericValue = (float) preg_replace('/[^0-9.-]/', '', $valueStr);
+        } catch (\Exception $e) {
+            return '';
+        }
 
         // Handle very small values that might be considered zero
         if (abs($numericValue) < 0.00001) {
