@@ -73,6 +73,7 @@ class ParcelDataSeeder extends Seeder
             'half_baths' => $this->parseInt($row[12] ?? null),
             'latest_sale_owner' => $row[13] ?? null,
             'latest_sale_date' => $this->parseDate($row[14] ?? null),
+//            'latest_sale_price' => $this->parseMoney($row[15] ?? null),
             'latest_sale_price' => $this->parseMoneyWithLogging($row[15] ?? null, $row[0]),
             'latest_assessment_year' => $this->parseDate($row[16] ?? null),
             'latest_total_value' => $this->parseMoney($row[17] ?? null),
@@ -81,23 +82,14 @@ class ParcelDataSeeder extends Seeder
             'updated_at' => $row[20] ?: now(),
         ];
     }
-    protected function parseMoneyWithLogging($value, $recordId)
+    protected function parseMoney($value)
     {
         if (empty($value)) {
-            Log::debug("Empty latest_sale_price in record ID: {$recordId}");
             return null;
         }
-
-        $originalValue = $value;
-        $cleaned = preg_replace('/[^0-9.-]/', '', $value);
-
-        if ($cleaned === '') {
-            Log::debug("Non-numeric latest_sale_price in record ID: {$recordId}, Original value: '{$originalValue}'");
-            return null;
-        }
-
-        return (float)$cleaned;
+        return (float) preg_replace('/[^0-9.-]/', '', $value);
     }
+
 
     protected function parseInt($value)
     {
@@ -120,4 +112,24 @@ class ParcelDataSeeder extends Seeder
             return null;
         }
     }
+
+
+
+    protected function parseMoneyWithLogging($value, $id = null)
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        // Remove currency symbols and commas
+        $cleaned = preg_replace('/[^\d\.\-]/', '', $value);
+
+        if (!is_numeric($cleaned)) {
+            Log::warning("Non-numeric latest_sale_price for ID {$id}: '{$value}' cleaned to '{$cleaned}'");
+            return null;
+        }
+
+        return (float)$cleaned;
+    }
+
 }
