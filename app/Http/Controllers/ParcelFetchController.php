@@ -249,27 +249,43 @@ class ParcelFetchController extends Controller
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
 
-        return Response::stream(function() {
+        $headers = $this->getCsvResponseHeaders($filename);
+
+        return new StreamedResponse(function() {
             $file = fopen('php://output', 'w');
+
+            // Write headers
             fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
 
-            // First get all parcels ordered by sale price
+            // Process parcels in chunks
             Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC')
                 ->chunk(500, function($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
-                        $salePrice = $parcel->latest_sale_price;
-                        $formattedPrice = $this->formatCurrency($salePrice ?? 0); // Default to 0 if null
+                        try {
+                            $salePrice = $parcel->latest_sale_price;
+                            $formattedPrice = $this->formatCurrency($salePrice ?? 0);
 
-                        fputcsv($file, array_merge(
-                            [$this->determineSaleGroup($salePrice), $formattedPrice],
-                            $this->formatParcelRow($parcel)
-                        ));
+                            $row = array_merge(
+                                [$this->determineSaleGroup($salePrice), $formattedPrice],
+                                $this->formatParcelRow($parcel)
+                            );
+
+                            fputcsv($file, $row);
+                        } catch (\Exception $e) {
+                            Log::error("Error processing parcel {$parcel->id}: " . $e->getMessage());
+                            continue;
+                        }
+                    }
+
+                    // Flush output buffer
+                    if (ob_get_level() > 0) {
+                        ob_flush();
                     }
                     flush();
                 });
 
             fclose($file);
-        }, 200, $this->getCsvResponseHeaders($filename));
+        }, 200, $headers);
     }
 
     protected function determineSaleGroup($price): string
