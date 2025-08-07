@@ -220,101 +220,101 @@ class ParcelFetchController extends Controller
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
-//    public function exportBySaleGroups(): StreamedResponse
-//    {
-//        $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
-//
-//        return Response::stream(function() {
-//            $file = fopen('php://output', 'w');
-//            fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
-//
-//            Parcel::orderBy('latest_sale_price', 'asc')
-//                ->chunk(500, function($parcels) use ($file) {
-//                    foreach ($parcels as $parcel) {
-//                        fputcsv($file, array_merge(
-//                            [$this->formatCurrency($parcel->latest_sale_price)],
-//                            $this->formatParcelRow($parcel)
-//                        ));
-//                    }
-//                    flush();
-//                });
-//
-//            fclose($file);
-//        }, 200, $this->getCsvResponseHeaders($filename));
-//    }
-    public function exportBySaleGroups()
+    public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
 
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename={$filename}",
-            'Pragma' => 'no-cache',
-            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires' => '0',
-            'X-Accel-Buffering' => 'no'
-        ];
+        return Response::stream(function() {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
 
-        // Create a temporary file
-        $tempPath = tempnam(sys_get_temp_dir(), 'parcel_export_');
-        $file = fopen($tempPath, 'w');
-
-        try {
-            // Write headers
-            fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
-
-            // Process in small batches with PostgreSQL-compatible syntax
-            Parcel::orderByRaw('CASE WHEN latest_sale_price IS NULL THEN 0 ELSE 1 END, latest_sale_price ASC')
-                ->chunk(100, function($parcels) use ($file) {
+            Parcel::orderBy('latest_sale_price', 'asc')
+                ->chunk(500, function($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
-                        $salePrice = $parcel->latest_sale_price;
-                        $formattedPrice = $this->formatCurrency($salePrice ?? 0);
-
-                        $row = array_merge(
-                            [$this->determineSaleGroup($salePrice), $formattedPrice],
+                        fputcsv($file, array_merge(
+                            [$this->formatCurrency($parcel->latest_sale_price)],
                             $this->formatParcelRow($parcel)
-                        );
-
-                        fputcsv($file, $row);
+                        ));
                     }
+                    flush();
                 });
 
             fclose($file);
-
-            // Return the file as download response
-            return response()->download($tempPath, $filename, $headers)
-                ->deleteFileAfterSend(true);
-
-        } catch (\Exception $e) {
-            if (is_resource($file)) {
-                fclose($file);
-            }
-            if (file_exists($tempPath)) {
-                unlink($tempPath);
-            }
-            Log::error("Export failed: " . $e->getMessage());
-            return response()->json([
-                'error' => 'Export failed: ' . $e->getMessage()
-            ], 500);
-        }
+        }, 200, $this->getCsvResponseHeaders($filename));
     }
-
-    protected function determineSaleGroup($price): string
-    {
-        if ($price === null || $price === '' || $price == 0) {
-            return '0$';
-        }
-
-        $numericPrice = (float)$price;
-
-        if (abs($numericPrice - 1.00) < 0.00001) {
-            return '1$';
-        }
-        if (abs($numericPrice - 2.00) < 0.00001) {
-            return '2$';
-        }
-        return 'Other';
-    }
+//    public function exportBySaleGroups()
+//    {
+//        $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
+//
+//        $headers = [
+//            'Content-Type' => 'text/csv',
+//            'Content-Disposition' => "attachment; filename={$filename}",
+//            'Pragma' => 'no-cache',
+//            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+//            'Expires' => '0',
+//            'X-Accel-Buffering' => 'no'
+//        ];
+//
+//        // Create a temporary file
+//        $tempPath = tempnam(sys_get_temp_dir(), 'parcel_export_');
+//        $file = fopen($tempPath, 'w');
+//
+//        try {
+//            // Write headers
+//            fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
+//
+//            // Process in small batches with PostgreSQL-compatible syntax
+//            Parcel::orderByRaw('CASE WHEN latest_sale_price IS NULL THEN 0 ELSE 1 END, latest_sale_price ASC')
+//                ->chunk(100, function($parcels) use ($file) {
+//                    foreach ($parcels as $parcel) {
+//                        $salePrice = $parcel->latest_sale_price;
+//                        $formattedPrice = $this->formatCurrency($salePrice ?? 0);
+//
+//                        $row = array_merge(
+//                            [$this->determineSaleGroup($salePrice), $formattedPrice],
+//                            $this->formatParcelRow($parcel)
+//                        );
+//
+//                        fputcsv($file, $row);
+//                    }
+//                });
+//
+//            fclose($file);
+//
+//            // Return the file as download response
+//            return response()->download($tempPath, $filename, $headers)
+//                ->deleteFileAfterSend(true);
+//
+//        } catch (\Exception $e) {
+//            if (is_resource($file)) {
+//                fclose($file);
+//            }
+//            if (file_exists($tempPath)) {
+//                unlink($tempPath);
+//            }
+//            Log::error("Export failed: " . $e->getMessage());
+//            return response()->json([
+//                'error' => 'Export failed: ' . $e->getMessage()
+//            ], 500);
+//        }
+//    }
+//
+//    protected function determineSaleGroup($price): string
+//    {
+//        if ($price === null || $price === '' || $price == 0) {
+//            return '0$';
+//        }
+//
+//        $numericPrice = (float)$price;
+//
+//        if (abs($numericPrice - 1.00) < 0.00001) {
+//            return '1$';
+//        }
+//        if (abs($numericPrice - 2.00) < 0.00001) {
+//            return '2$';
+//        }
+//        return 'Other';
+//    }
 
     protected function getCsvHeaders(): array
     {
