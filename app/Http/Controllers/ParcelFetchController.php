@@ -243,7 +243,6 @@ class ParcelFetchController extends Controller
 //        }, 200, $this->getCsvResponseHeaders($filename));
 //    }
 
-
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
@@ -253,66 +252,50 @@ class ParcelFetchController extends Controller
             'Content-Disposition' => "attachment; filename={$filename}",
             'Pragma' => 'no-cache',
             'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires' => '0'
+            'Expires' => '0',
+            'X-Accel-Buffering' => 'no' // Critical for Render
         ];
 
-        $callback = function() {
-            $file = fopen('php://output', 'w');
-
-            // Write headers
-            fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
-
-            // Initialize output buffering
-            if (ob_get_level() == 0) {
-                ob_start();
-            }
+        return new StreamedResponse(function() {
+            // Start output buffering if not already started
+            if (ob_get_level() == 0) ob_start();
 
             try {
-                // Use smaller chunks and explicit database connection handling
-                $connection = DB::connection();
-                $connection->reconnectIfMissingConnection();
+                // Manually output headers
+                echo implode(',', array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders())) . "\r\n";
 
+                // Process in small batches
                 $query = Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC');
-
-                $query->chunk(100, function($parcels) use ($file, $connection) {
-                    // Reconnect if connection was lost
-                    $connection->reconnectIfMissingConnection();
-
+                $query->chunk(100, function($parcels) {
                     foreach ($parcels as $parcel) {
-                        try {
-                            $salePrice = $parcel->latest_sale_price;
-                            $formattedPrice = $this->formatCurrency($salePrice ?? 0);
+                        $salePrice = $parcel->latest_sale_price;
+                        $formattedPrice = $this->formatCurrency($salePrice ?? 0);
 
-                            $row = array_merge(
-                                [$this->determineSaleGroup($salePrice), $formattedPrice],
-                                $this->formatParcelRow($parcel)
-                            );
+                        $row = array_merge(
+                            [$this->determineSaleGroup($salePrice), $formattedPrice],
+                            $this->formatParcelRow($parcel)
+                        );
 
-                            fputcsv($file, $row);
-                        } catch (\Exception $e) {
-                            Log::error("Error processing parcel {$parcel->id}: " . $e->getMessage());
-                            continue;
+                        // Manually create CSV line
+                        $csvLine = '';
+                        foreach ($row as $value) {
+                            $csvLine .= '"' . str_replace('"', '""', $value) . '",';
                         }
+                        echo rtrim($csvLine, ',') . "\r\n";
                     }
 
                     // Flush output buffer
                     ob_flush();
                     flush();
-
-                    // Explicitly free memory
-                    unset($parcels);
-                    gc_collect_cycles();
                 });
 
             } catch (\Exception $e) {
                 Log::error("Export failed: " . $e->getMessage());
                 throw $e;
             } finally {
-                fclose($file);
+                if (ob_get_level() > 0) ob_end_clean();
             }
-        };
-
-        return new StreamedResponse($callback, 200, $headers);
+        }, 200, $headers);
     }
 
     protected function determineSaleGroup($price): string
@@ -331,8 +314,6 @@ class ParcelFetchController extends Controller
         }
         return 'Other';
     }
-
-
 
     protected function getCsvHeaders(): array
     {
