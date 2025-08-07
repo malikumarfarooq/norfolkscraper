@@ -263,8 +263,8 @@ class ParcelFetchController extends Controller
             // Write headers
             fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
 
-            // Process in small batches
-            Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC')
+            // Process in small batches with PostgreSQL-compatible syntax
+            Parcel::orderByRaw('CASE WHEN latest_sale_price IS NULL THEN 0 ELSE 1 END, latest_sale_price ASC')
                 ->chunk(100, function($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
                         $salePrice = $parcel->latest_sale_price;
