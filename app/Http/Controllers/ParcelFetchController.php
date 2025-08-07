@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-
+use Illuminate\Support\Facades\DB;
 class ParcelFetchController extends Controller
 {
     public function index()
@@ -244,22 +244,40 @@ class ParcelFetchController extends Controller
 //    }
 
 
-
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
 
-        $headers = $this->getCsvResponseHeaders($filename);
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename={$filename}",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0'
+        ];
 
-        return new StreamedResponse(function() {
+        $callback = function() {
             $file = fopen('php://output', 'w');
 
             // Write headers
             fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
 
-            // Process parcels in chunks
-            Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC')
-                ->chunk(500, function($parcels) use ($file) {
+            // Initialize output buffering
+            if (ob_get_level() == 0) {
+                ob_start();
+            }
+
+            try {
+                // Use smaller chunks and explicit database connection handling
+                $connection = DB::connection();
+                $connection->reconnectIfMissingConnection();
+
+                $query = Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC');
+
+                $query->chunk(100, function($parcels) use ($file, $connection) {
+                    // Reconnect if connection was lost
+                    $connection->reconnectIfMissingConnection();
+
                     foreach ($parcels as $parcel) {
                         try {
                             $salePrice = $parcel->latest_sale_price;
@@ -278,14 +296,23 @@ class ParcelFetchController extends Controller
                     }
 
                     // Flush output buffer
-                    if (ob_get_level() > 0) {
-                        ob_flush();
-                    }
+                    ob_flush();
                     flush();
+
+                    // Explicitly free memory
+                    unset($parcels);
+                    gc_collect_cycles();
                 });
 
-            fclose($file);
-        }, 200, $headers);
+            } catch (\Exception $e) {
+                Log::error("Export failed: " . $e->getMessage());
+                throw $e;
+            } finally {
+                fclose($file);
+            }
+        };
+
+        return new StreamedResponse($callback, 200, $headers);
     }
 
     protected function determineSaleGroup($price): string
