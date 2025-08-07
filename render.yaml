@@ -22,3 +22,5 @@ services:
     database:
       name: your-db-name
       plan: free
+env:
+  PHP_MEMORY_LIMIT: 256M

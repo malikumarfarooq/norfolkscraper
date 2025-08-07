@@ -242,8 +242,7 @@ class ParcelFetchController extends Controller
 //            fclose($file);
 //        }, 200, $this->getCsvResponseHeaders($filename));
 //    }
-
-    public function exportBySaleGroups(): StreamedResponse
+    public function exportBySaleGroups()
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
 
@@ -253,20 +252,20 @@ class ParcelFetchController extends Controller
             'Pragma' => 'no-cache',
             'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
             'Expires' => '0',
-            'X-Accel-Buffering' => 'no' // Critical for Render
+            'X-Accel-Buffering' => 'no'
         ];
 
-        return new StreamedResponse(function() {
-            // Start output buffering if not already started
-            if (ob_get_level() == 0) ob_start();
+        // Create a temporary file
+        $tempPath = tempnam(sys_get_temp_dir(), 'parcel_export_');
+        $file = fopen($tempPath, 'w');
 
-            try {
-                // Manually output headers
-                echo implode(',', array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders())) . "\r\n";
+        try {
+            // Write headers
+            fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
 
-                // Process in small batches
-                $query = Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC');
-                $query->chunk(100, function($parcels) {
+            // Process in small batches
+            Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC')
+                ->chunk(100, function($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
                         $salePrice = $parcel->latest_sale_price;
                         $formattedPrice = $this->formatCurrency($salePrice ?? 0);
@@ -276,26 +275,28 @@ class ParcelFetchController extends Controller
                             $this->formatParcelRow($parcel)
                         );
 
-                        // Manually create CSV line
-                        $csvLine = '';
-                        foreach ($row as $value) {
-                            $csvLine .= '"' . str_replace('"', '""', $value) . '",';
-                        }
-                        echo rtrim($csvLine, ',') . "\r\n";
+                        fputcsv($file, $row);
                     }
-
-                    // Flush output buffer
-                    ob_flush();
-                    flush();
                 });
 
-            } catch (\Exception $e) {
-                Log::error("Export failed: " . $e->getMessage());
-                throw $e;
-            } finally {
-                if (ob_get_level() > 0) ob_end_clean();
+            fclose($file);
+
+            // Return the file as download response
+            return response()->download($tempPath, $filename, $headers)
+                ->deleteFileAfterSend(true);
+
+        } catch (\Exception $e) {
+            if (is_resource($file)) {
+                fclose($file);
             }
-        }, 200, $headers);
+            if (file_exists($tempPath)) {
+                unlink($tempPath);
+            }
+            Log::error("Export failed: " . $e->getMessage());
+            return response()->json([
+                'error' => 'Export failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     protected function determineSaleGroup($price): string
