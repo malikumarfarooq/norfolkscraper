@@ -220,19 +220,48 @@ class ParcelFetchController extends Controller
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
+//    public function exportBySaleGroups(): StreamedResponse
+//    {
+//        $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
+//
+//        return Response::stream(function() {
+//            $file = fopen('php://output', 'w');
+//            fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
+//
+//            Parcel::orderBy('latest_sale_price', 'asc')
+//                ->chunk(500, function($parcels) use ($file) {
+//                    foreach ($parcels as $parcel) {
+//                        fputcsv($file, array_merge(
+//                            [$this->formatCurrency($parcel->latest_sale_price)],
+//                            $this->formatParcelRow($parcel)
+//                        ));
+//                    }
+//                    flush();
+//                });
+//
+//            fclose($file);
+//        }, 200, $this->getCsvResponseHeaders($filename));
+//    }
+
+
+
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
 
         return Response::stream(function() {
             $file = fopen('php://output', 'w');
-            fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
+            fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
 
-            Parcel::orderBy('latest_sale_price', 'asc')
+            // First get all parcels ordered by sale price
+            Parcel::orderByRaw('ISNULL(latest_sale_price), latest_sale_price ASC')
                 ->chunk(500, function($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
+                        $salePrice = $parcel->latest_sale_price;
+                        $formattedPrice = $this->formatCurrency($salePrice ?? 0); // Default to 0 if null
+
                         fputcsv($file, array_merge(
-                            [$this->formatCurrency($parcel->latest_sale_price)],
+                            [$this->determineSaleGroup($salePrice), $formattedPrice],
                             $this->formatParcelRow($parcel)
                         ));
                     }
@@ -245,15 +274,12 @@ class ParcelFetchController extends Controller
 
     protected function determineSaleGroup($price): string
     {
-        if ($price === null || $price === '') {
+        if ($price === null || $price === '' || $price == 0) {
             return '0$';
         }
 
         $numericPrice = (float)$price;
 
-        if (abs($numericPrice) < 0.00001) { // Handles 0, 0.0, '0', etc.
-            return '0$';
-        }
         if (abs($numericPrice - 1.00) < 0.00001) {
             return '1$';
         }
