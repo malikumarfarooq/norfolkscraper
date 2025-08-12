@@ -229,18 +229,33 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
 
-            // Modified query with stable sorting and chunking
-            Parcel::orderBy('latest_sale_price', 'asc')
-                ->orderBy('id') // Secondary sort for stability
-                ->chunkById(500, function ($parcels) use ($file) {
-                    foreach ($parcels as $parcel) {
-                        fputcsv($file, array_merge(
-                            [$this->formatCurrency($parcel->latest_sale_price)],
-                            $this->formatParcelRow($parcel)
-                        ));
-                    }
-                    flush();
-                }, 'id'); // Column to chunk by
+            // Get the minimum ID to start from
+            $minId = Parcel::min('id');
+            $lastId = $minId - 1;
+
+            // Process in batches with explicit cursor
+            do {
+                $parcels = Parcel::where('id', '>', $lastId)
+                    ->orderBy('latest_sale_price', 'asc')
+                    ->orderBy('id')
+                    ->limit(500)
+                    ->get();
+
+                if ($parcels->isEmpty()) {
+                    break;
+                }
+
+                foreach ($parcels as $parcel) {
+                    fputcsv($file, array_merge(
+                        [$this->formatCurrency($parcel->latest_sale_price)],
+                        $this->formatParcelRow($parcel)
+                    ));
+                    $lastId = $parcel->id;
+                }
+
+                flush();
+
+            } while (true);
 
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
