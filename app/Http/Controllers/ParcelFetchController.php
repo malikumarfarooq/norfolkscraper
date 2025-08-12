@@ -223,47 +223,23 @@ class ParcelFetchController extends Controller
 
     public function exportBySaleGroups(): StreamedResponse
     {
-        $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
+        $filename = "parcels_" . now()->format('Y-m-d_His') . ".csv";
 
         return Response::stream(function () {
             $file = fopen('php://output', 'w');
-            fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
+            fputcsv($file, $this->getCsvHeaders());
 
-            // Method 1: Temporary table approach (most reliable)
-            DB::statement('CREATE TEMPORARY TABLE temp_export_parcels AS
-                      SELECT * FROM parcels ORDER BY latest_sale_price ASC, id ASC');
-
-            $lastId = 0;
-            $chunkSize = 1000;
-
-            do {
-                $parcels = DB::table('temp_export_parcels')
-                    ->where('id', '>', $lastId)
-                    ->orderBy('id')
-                    ->limit($chunkSize)
-                    ->get();
-
-                if ($parcels->isEmpty()) {
-                    break;
-                }
-
+            Parcel::chunk(1000, function ($parcels) use ($file) {
                 foreach ($parcels as $parcel) {
-                    fputcsv($file, array_merge(
-                        [$this->formatCurrency($parcel->latest_sale_price)],
-                        $this->formatParcelRow((object)$parcel) // Convert to object
-                    ));
-                    $lastId = $parcel->id;
+                    fputcsv($file, $this->formatParcelRow($parcel));
                 }
+            });
 
-                flush(); // Ensure output is sent to browser
-                unset($parcels); // Free memory
-
-            } while (true);
-
-            DB::statement('DROP TABLE IF EXISTS temp_export_parcels');
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
     }
+
+
 //    public function exportBySaleGroups()
 //    {
 //        $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
