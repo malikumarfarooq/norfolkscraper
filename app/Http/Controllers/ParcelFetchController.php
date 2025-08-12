@@ -229,8 +229,10 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
 
+            // Modified query with stable sorting and chunking
             Parcel::orderBy('latest_sale_price', 'asc')
-                ->chunk(500, function ($parcels) use ($file) {
+                ->orderBy('id') // Secondary sort for stability
+                ->chunkById(500, function ($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
                         fputcsv($file, array_merge(
                             [$this->formatCurrency($parcel->latest_sale_price)],
@@ -238,7 +240,7 @@ class ParcelFetchController extends Controller
                         ));
                     }
                     flush();
-                });
+                }, 'id'); // Column to chunk by
 
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
