@@ -19,6 +19,7 @@ class ParcelFetchController extends Controller
         $lastBatch = ParcelFetchBatch::latest()->first();
         return view('parcels.fetch', ['lastBatch' => $lastBatch]);
     }
+
     public function startFetching(Request $request)
     {
         $request->validate([
@@ -106,7 +107,7 @@ class ParcelFetchController extends Controller
 
             // Calculate accurate progress percentage
             $progress = ($batch->totalJobs > 0)
-                ? (int) round(($batch->processedJobs() / $batch->totalJobs) * 100)
+                ? (int)round(($batch->processedJobs() / $batch->totalJobs) * 100)
                 : 0;
 
             // Update batch record in database
@@ -145,6 +146,7 @@ class ParcelFetchController extends Controller
 
         return 'processing';
     }
+
     protected function updateBatchRecord($batchId, $batch, $status): void
     {
         ParcelFetchBatch::updateOrCreate(
@@ -201,16 +203,15 @@ class ParcelFetchController extends Controller
     }
 
 
-
     public function exportCsv(): StreamedResponse
     {
         $filename = "parcels_" . now()->format('Y-m-d_His') . ".csv";
 
-        return Response::stream(function() {
+        return Response::stream(function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, $this->getCsvHeaders());
 
-            Parcel::chunk(1000, function($parcels) use ($file) {
+            Parcel::chunk(1000, function ($parcels) use ($file) {
                 foreach ($parcels as $parcel) {
                     fputcsv($file, $this->formatParcelRow($parcel));
                 }
@@ -224,12 +225,12 @@ class ParcelFetchController extends Controller
     {
         $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
 
-        return Response::stream(function() {
+        return Response::stream(function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, array_merge(['Sale Price'], $this->getCsvHeaders()));
 
             Parcel::orderBy('latest_sale_price', 'asc')
-                ->chunk(500, function($parcels) use ($file) {
+                ->chunk(500, function ($parcels) use ($file) {
                     foreach ($parcels as $parcel) {
                         fputcsv($file, array_merge(
                             [$this->formatCurrency($parcel->latest_sale_price)],
@@ -391,11 +392,11 @@ class ParcelFetchController extends Controller
     protected function formatCurrency($value): string
     {
         // Normalize and clean input
-        $stringValue = trim((string) $value);
+        $stringValue = trim((string)$value);
         $cleanedValue = str_replace(['$', ','], '', $stringValue);
 
         // Convert to float
-        $numericValue = is_numeric($cleanedValue) ? (float) $cleanedValue : null;
+        $numericValue = is_numeric($cleanedValue) ? (float)$cleanedValue : null;
 
         if ($numericValue === null) {
             return ''; // Return blank for truly non-numeric/null values
@@ -408,6 +409,114 @@ class ParcelFetchController extends Controller
 
         return '$' . number_format($numericValue, 2);
     }
+
+
+//    protected function parseMailingAddress(?string $address): array
+//    {
+//        $default = [
+//            'street' => '',
+//            'city' => '',
+//            'state' => '',
+//            'zip' => ''
+//        ];
+//
+//        if (empty($address)) {
+//            return $default;
+//        }
+//
+//        // Remove any double quotes if present
+//        $address = trim(str_replace('"', '', $address));
+//
+//        // Try comma-separated format first (Street, City, State Zip)
+//        if (strpos($address, ',') !== false) {
+//            $parts = explode(',', $address);
+//            $street = trim($parts[0] ?? '');
+//            $city = trim($parts[1] ?? '');
+//            $stateZip = trim($parts[2] ?? '');
+//        }
+//        // Handle space-separated format (Street City State Zip)
+//        else {
+//            // Extract state and zip first
+//            if (preg_match('/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address, $matches)) {
+//                $state = $matches[1] ?? '';
+//                $zip = $matches[2] ?? '';
+//                $remaining = trim(str_replace($matches[0], '', $address));
+//
+//                // Now find the city name (should be the last word before state)
+//                // Split remaining into street and city
+//                $cityParts = explode(' ', $remaining);
+//                $city = array_pop($cityParts);
+//                $street = implode(' ', $cityParts);
+//
+//                return [
+//                    'street' => $street,
+//                    'city' => $city,
+//                    'state' => $state,
+//                    'zip' => $zip
+//                ];
+//            }
+//            return $default;
+//        }
+//
+//        // Handle state and zip extraction
+//        $state = '';
+//        $zip = '';
+//        if (!empty($stateZip)) {
+//            if (preg_match('/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)/', $stateZip, $matches)) {
+//                $state = $matches[1] ?? '';
+//                $zip = $matches[2] ?? '';
+//            } elseif (preg_match('/([A-Z]{2})/', $stateZip, $matches)) {
+//                $state = $matches[1] ?? '';
+//            }
+//        }
+//
+//        return [
+//            'street' => $street,
+//            'city' => $city,
+//            'state' => $state,
+//            'zip' => $zip
+//        ];
+//    }
+//}
+
+    protected array $knownCities = [
+        'colorado springs',
+        'foster city',
+        'fort worth',
+        'kansas city',
+        'las vegas',
+        'long beach',
+        'los angeles',
+        'new york',
+        'san antonio',
+        'san diego',
+        'san francisco',
+        'universal city',
+        'virginia beach',
+        'winston salem',
+        'salt lake city',
+        'glen allen',
+        'oklahoma city',
+        'newport news',
+        'tysons corner',
+        'rowland heights',
+        'gales ferry',
+        'whitefish bay',
+        'potomac falls',
+        'pembroke pines',
+        'cherry hill',
+        'laguna beach',
+        'wappingers falls',
+        'huntington beach',
+        'manhattan beach',
+        'atlantic beach',
+        'apollo beach',
+        'delray beach',
+        'elizabeth city',
+        'north chesterfield',
+        'great falls',
+        'newport beach',
+    ];
 
 
     protected function parseMailingAddress(?string $address): array
@@ -432,48 +541,67 @@ class ParcelFetchController extends Controller
             $street = trim($parts[0] ?? '');
             $city = trim($parts[1] ?? '');
             $stateZip = trim($parts[2] ?? '');
+
+            // Extract state and zip from stateZip
+            $state = '';
+            $zip = '';
+            if (!empty($stateZip)) {
+                if (preg_match('/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)/', $stateZip, $matches)) {
+                    $state = $matches[1] ?? '';
+                    $zip = $matches[2] ?? '';
+                } elseif (preg_match('/([A-Z]{2})/', $stateZip, $matches)) {
+                    $state = $matches[1] ?? '';
+                }
+            }
+
+            return [
+                'street' => $street,
+                'city' => $city,
+                'state' => $state,
+                'zip' => $zip
+            ];
         }
+
         // Handle space-separated format (Street City State Zip)
-        else {
-            // Extract state and zip first
-            if (preg_match('/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address, $matches)) {
-                $state = $matches[1] ?? '';
-                $zip = $matches[2] ?? '';
-                $remaining = trim(str_replace($matches[0], '', $address));
+        if (preg_match('/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address, $matches)) {
+            $state = $matches[1];
+            $zip = $matches[2];
 
-                // Now find the city name (should be the last word before state)
-                // Split remaining into street and city
-                $cityParts = explode(' ', $remaining);
-                $city = array_pop($cityParts);
-                $street = implode(' ', $cityParts);
+            // Remove state and zip from the address
+            $remaining = trim(str_replace($matches[0], '', $address));
 
-                return [
-                    'street' => $street,
-                    'city' => $city,
-                    'state' => $state,
-                    'zip' => $zip
-                ];
+            // Split remaining into words
+            $words = explode(' ', $remaining);
+
+            // Try to detect city name from the end (max 3 words)
+            $city = '';
+            $street = '';
+            for ($i = count($words) - 1; $i >= max(0, count($words) - 3); $i--) {
+                $possibleCity = implode(' ', array_slice($words, $i));
+                if (in_array(strtolower($possibleCity), $this->knownCities)) {
+                    $city = $possibleCity;
+                    $street = implode(' ', array_slice($words, 0, $i));
+                    return [
+                        'street' => $street,
+                        'city' => $city,
+                        'state' => $state,
+                        'zip' => $zip
+                    ];
+                }
             }
-            return $default;
-        }
 
-        // Handle state and zip extraction
-        $state = '';
-        $zip = '';
-        if (!empty($stateZip)) {
-            if (preg_match('/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)/', $stateZip, $matches)) {
-                $state = $matches[1] ?? '';
-                $zip = $matches[2] ?? '';
-            } elseif (preg_match('/([A-Z]{2})/', $stateZip, $matches)) {
-                $state = $matches[1] ?? '';
-            }
-        }
+            // Fallback: assume last word is city
+            $cityParts = $words;
+            $city = array_pop($cityParts);
+            $street = implode(' ', $cityParts);
 
-        return [
-            'street' => $street,
-            'city' => $city,
-            'state' => $state,
-            'zip' => $zip
-        ];
+            return [
+                'street' => $street,
+                'city' => $city,
+                'state' => $state,
+                'zip' => $zip
+            ];
+        }
+        return $default;
     }
 }
