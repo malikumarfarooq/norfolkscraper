@@ -63,10 +63,10 @@
                                         <span>Status:</span>
                                         <span id="status-text" class="badge bg-secondary">Pending</span>
                                     </div>
-                                    <div class="d-flex justify-content-between">
-                                        <span>Time Remaining:</span>
-                                        <span id="time-remaining">calculating...</span>
-                                    </div>
+{{--                                    <div class="d-flex justify-content-between">--}}
+{{--                                        <span>Time Remaining:</span>--}}
+{{--                                        <span id="time-remaining">calculating...</span>--}}
+{{--                                    </div>--}}
                                 </div>
                             </div>
 
@@ -258,7 +258,7 @@
                 updateStatus(status || 'pending', failedJobs || 0);
 
                 if (status === 'processing') {
-                    updateTimeEstimate(processedJobs, totalJobs);
+                    // updateTimeEstimate(processedJobs, totalJobs);
                 }
 
                 if (safeProgress === 100 || ['completed', 'completed_with_errors', 'failed', 'cancelled'].includes(status)) {
@@ -292,28 +292,28 @@
             }
 
 
-            function updateTimeEstimate(processed, total) {
-                if (processed <= 0 || !startTime) {
-                    $timeRemaining.text('calculating...');
-                    return;
-                }
-
-                const now = new Date();
-                const elapsed = (now - startTime) / 1000; // in seconds
-                const rate = processed / elapsed;
-                const remaining = Math.max(0, Math.round((total - processed) / rate));
-
-                // Format as HH:MM:SS
-                const hours = Math.floor(remaining / 3600);
-                const minutes = Math.floor((remaining % 3600) / 60);
-                const seconds = Math.floor(remaining % 60);
-
-                $timeRemaining.text(
-                    `${hours.toString().padStart(2, '0')}:` +
-                    `${minutes.toString().padStart(2, '0')}:` +
-                    `${seconds.toString().padStart(2, '0')}`
-                );
-            }
+            // function updateTimeEstimate(processed, total) {
+            //     if (processed <= 0 || !startTime) {
+            //         $timeRemaining.text('calculating...');
+            //         return;
+            //     }
+            //
+            //     const now = new Date();
+            //     const elapsed = (now - startTime) / 1000; // in seconds
+            //     const rate = processed / elapsed;
+            //     const remaining = Math.max(0, Math.round((total - processed) / rate));
+            //
+            //     // Format as HH:MM:SS
+            //     const hours = Math.floor(remaining / 3600);
+            //     const minutes = Math.floor((remaining % 3600) / 60);
+            //     const seconds = Math.floor(remaining % 60);
+            //
+            //     $timeRemaining.text(
+            //         `${hours.toString().padStart(2, '0')}:` +
+            //         `${minutes.toString().padStart(2, '0')}:` +
+            //         `${seconds.toString().padStart(2, '0')}`
+            //     );
+            // }
 
             function handleStartSuccess(response) {
                 if (!response.batch_id) {

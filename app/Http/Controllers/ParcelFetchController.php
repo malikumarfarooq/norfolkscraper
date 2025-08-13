@@ -28,7 +28,7 @@ class ParcelFetchController extends Controller
 
         try {
             $chunkSize = $request->input('chunk_size', 200);
-            $bulkSize = 25;
+            $bulkSize = 35;
 
             $query = Property::whereNotNull('tax_account_number');
             $totalAccounts = $query->count();
@@ -220,7 +220,6 @@ class ParcelFetchController extends Controller
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
     }
-
     public function exportBySaleGroups(): StreamedResponse
     {
         $filename = "parcels_" . now()->format('Y-m-d_His') . ".csv";
@@ -229,90 +228,18 @@ class ParcelFetchController extends Controller
             $file = fopen('php://output', 'w');
             fputcsv($file, $this->getCsvHeaders());
 
-            Parcel::chunk(1000, function ($parcels) use ($file) {
-                foreach ($parcels as $parcel) {
-                    fputcsv($file, $this->formatParcelRow($parcel));
-                }
-            });
+            Parcel::orderBy('latest_sale_date', 'desc')
+                ->chunkById(1000, function ($parcels) use ($file) {
+                    foreach ($parcels as $parcel) {
+                        fputcsv($file, $this->formatParcelRow($parcel));
+                    }
+                }, 'id'); // The column to use for chunking
 
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
     }
 
 
-//    public function exportBySaleGroups()
-//    {
-//        $filename = "parcels_by_sale_price_" . now()->format('Y-m-d_His') . ".csv";
-//
-//        $headers = [
-//            'Content-Type' => 'text/csv',
-//            'Content-Disposition' => "attachment; filename={$filename}",
-//            'Pragma' => 'no-cache',
-//            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
-//            'Expires' => '0',
-//            'X-Accel-Buffering' => 'no'
-//        ];
-//
-//        // Create a temporary file
-//        $tempPath = tempnam(sys_get_temp_dir(), 'parcel_export_');
-//        $file = fopen($tempPath, 'w');
-//
-//        try {
-//            // Write headers
-//            fputcsv($file, array_merge(['Sale Group', 'Sale Price'], $this->getCsvHeaders()));
-//
-//            // Process in small batches with PostgreSQL-compatible syntax
-//            Parcel::orderByRaw('CASE WHEN latest_sale_price IS NULL THEN 0 ELSE 1 END, latest_sale_price ASC')
-//                ->chunk(100, function($parcels) use ($file) {
-//                    foreach ($parcels as $parcel) {
-//                        $salePrice = $parcel->latest_sale_price;
-//                        $formattedPrice = $this->formatCurrency($salePrice ?? 0);
-//
-//                        $row = array_merge(
-//                            [$this->determineSaleGroup($salePrice), $formattedPrice],
-//                            $this->formatParcelRow($parcel)
-//                        );
-//
-//                        fputcsv($file, $row);
-//                    }
-//                });
-//
-//            fclose($file);
-//
-//            // Return the file as download response
-//            return response()->download($tempPath, $filename, $headers)
-//                ->deleteFileAfterSend(true);
-//
-//        } catch (\Exception $e) {
-//            if (is_resource($file)) {
-//                fclose($file);
-//            }
-//            if (file_exists($tempPath)) {
-//                unlink($tempPath);
-//            }
-//            Log::error("Export failed: " . $e->getMessage());
-//            return response()->json([
-//                'error' => 'Export failed: ' . $e->getMessage()
-//            ], 500);
-//        }
-//    }
-//
-//    protected function determineSaleGroup($price): string
-//    {
-//        if ($price === null || $price === '' || $price == 0) {
-//            return '0$';
-//        }
-//
-//        $numericPrice = (float)$price;
-//
-//        if (abs($numericPrice - 1.00) < 0.00001) {
-//            return '1$';
-//        }
-//        if (abs($numericPrice - 2.00) < 0.00001) {
-//            return '2$';
-//        }
-//        return 'Other';
-//    }
 
     protected function getCsvHeaders(): array
     {
@@ -407,74 +334,6 @@ class ParcelFetchController extends Controller
         return '$' . number_format($numericValue, 2);
     }
 
-
-//    protected function parseMailingAddress(?string $address): array
-//    {
-//        $default = [
-//            'street' => '',
-//            'city' => '',
-//            'state' => '',
-//            'zip' => ''
-//        ];
-//
-//        if (empty($address)) {
-//            return $default;
-//        }
-//
-//        // Remove any double quotes if present
-//        $address = trim(str_replace('"', '', $address));
-//
-//        // Try comma-separated format first (Street, City, State Zip)
-//        if (strpos($address, ',') !== false) {
-//            $parts = explode(',', $address);
-//            $street = trim($parts[0] ?? '');
-//            $city = trim($parts[1] ?? '');
-//            $stateZip = trim($parts[2] ?? '');
-//        }
-//        // Handle space-separated format (Street City State Zip)
-//        else {
-//            // Extract state and zip first
-//            if (preg_match('/([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/', $address, $matches)) {
-//                $state = $matches[1] ?? '';
-//                $zip = $matches[2] ?? '';
-//                $remaining = trim(str_replace($matches[0], '', $address));
-//
-//                // Now find the city name (should be the last word before state)
-//                // Split remaining into street and city
-//                $cityParts = explode(' ', $remaining);
-//                $city = array_pop($cityParts);
-//                $street = implode(' ', $cityParts);
-//
-//                return [
-//                    'street' => $street,
-//                    'city' => $city,
-//                    'state' => $state,
-//                    'zip' => $zip
-//                ];
-//            }
-//            return $default;
-//        }
-//
-//        // Handle state and zip extraction
-//        $state = '';
-//        $zip = '';
-//        if (!empty($stateZip)) {
-//            if (preg_match('/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)/', $stateZip, $matches)) {
-//                $state = $matches[1] ?? '';
-//                $zip = $matches[2] ?? '';
-//            } elseif (preg_match('/([A-Z]{2})/', $stateZip, $matches)) {
-//                $state = $matches[1] ?? '';
-//            }
-//        }
-//
-//        return [
-//            'street' => $street,
-//            'city' => $city,
-//            'state' => $state,
-//            'zip' => $zip
-//        ];
-//    }
-//}
 
     protected array $knownCities = [
         'colorado springs',
