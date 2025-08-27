@@ -220,25 +220,58 @@ class ParcelFetchController extends Controller
             fclose($file);
         }, 200, $this->getCsvResponseHeaders($filename));
     }
+
     public function exportBySaleGroups(): StreamedResponse
     {
-        $filename = "parcels_" . now()->format('Y-m-d_His') . ".csv";
+        $filename = "parcels_sorted_" . now()->format('Y-m-d_His') . ".csv";
 
-        return Response::stream(function () {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0'
+        ];
+
+        return Response::stream(function() {
             $file = fopen('php://output', 'w');
+
+            // BOM for Excel compatibility
+            fwrite($file, "\xEF\xBB\xBF");
             fputcsv($file, $this->getCsvHeaders());
 
-            Parcel::orderBy('latest_sale_date', 'desc')
-                ->chunkById(1000, function ($parcels) use ($file) {
-                    foreach ($parcels as $parcel) {
-                        fputcsv($file, $this->formatParcelRow($parcel));
+            // Use raw database cursor for maximum efficiency
+            $connection = DB::connection()->getPdo();
+            $query = "
+            SELECT * FROM parcels
+            ORDER BY
+                CASE WHEN latest_sale_price IS NULL THEN 1 ELSE 0 END,
+                latest_sale_price ASC,
+                id ASC
+        ";
+            $statement = $connection->prepare($query);
+            $statement->execute();
+
+            $count = 0;
+            $lastFlush = microtime(true);
+
+            while ($parcel = $statement->fetch(PDO::FETCH_OBJ)) {
+                fputcsv($file, $this->formatParcelRow((array)$parcel));
+                $count++;
+
+                // Flush every 100 records or every 0.5 seconds
+                if ($count % 100 === 0 || microtime(true) - $lastFlush > 0.5) {
+                    if (ob_get_level() > 0) {
+                        ob_flush();
                     }
-                }, 'id'); // The column to use for chunking
+                    flush();
+                    $lastFlush = microtime(true);
+                }
+            }
 
             fclose($file);
-        }, 200, $this->getCsvResponseHeaders($filename));
+        }, 200, $headers);
     }
-
 
 
     protected function getCsvHeaders(): array
